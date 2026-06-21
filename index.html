@@ -1,0 +1,1431 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SpikeSpeed — Анализ скорости удара</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        navy: { 950:'#060E1A', 900:'#0A1628', 800:'#0F1D33', 700:'#132240', 600:'#1B3A5C', 500:'#245580' },
+                        vball: { 600:'#C2410C', 500:'#F97316', 400:'#FB923C', 300:'#FDBA74' },
+                    },
+                    fontFamily: {
+                        display: ['Oswald','sans-serif'],
+                        body: ['"Source Sans 3"','sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Source+Sans+3:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{
+            font-family:'Source Sans 3',sans-serif;color:#E2E8F0;min-height:100vh;overflow-x:hidden;
+            background:#0A1628;
+            background-image:
+                radial-gradient(ellipse at 80% 5%,rgba(249,115,22,.07) 0%,transparent 50%),
+                radial-gradient(ellipse at 5% 95%,rgba(27,58,92,.35) 0%,transparent 50%),
+                linear-gradient(rgba(255,255,255,.015) 1px,transparent 1px),
+                linear-gradient(90deg,rgba(255,255,255,.015) 1px,transparent 1px);
+            background-size:100%,100%,48px 48px,48px 48px;
+        }
+        .app-grid{
+            display:grid;
+            grid-template-columns:272px 1fr 340px;
+            grid-template-areas:"header header header" "params video results";
+            gap:14px;padding:14px;min-height:100vh;max-width:1580px;margin:0 auto;
+        }
+        @media(max-width:1279px){
+            .app-grid{grid-template-columns:272px 1fr;grid-template-areas:"header header" "params video" "results results";}
+            .results-panel{max-height:none!important;overflow:visible!important;}
+        }
+        @media(max-width:767px){
+            .app-grid{grid-template-columns:1fr;grid-template-areas:"header" "params" "video" "results";gap:12px;padding:10px;}
+            .results-panel{max-height:none!important;overflow:visible!important;}
+        }
+        .app-header{grid-area:header}
+        .params-panel{grid-area:params}
+        .video-panel{grid-area:video}
+        .results-panel{grid-area:results;overflow-y:auto;max-height:calc(100vh - 60px);scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.08) transparent;}
+        .results-panel::-webkit-scrollbar{width:5px}
+        .results-panel::-webkit-scrollbar-track{background:transparent}
+        .results-panel::-webkit-scrollbar-thumb{background:rgba(255,255,255,.08);border-radius:3px}
+        .card{
+            background:rgba(15,29,51,.75);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+            border:1px solid rgba(255,255,255,.05);border-radius:16px;padding:20px;
+            transition:border-color .35s,box-shadow .35s;
+        }
+        .card:hover{border-color:rgba(249,115,22,.12);box-shadow:0 0 30px rgba(249,115,22,.04)}
+        .btn-primary{
+            background:linear-gradient(135deg,#F97316,#C2410C);color:#fff;font-family:'Oswald',sans-serif;font-weight:600;
+            letter-spacing:.8px;border:none;border-radius:10px;padding:13px 20px;cursor:pointer;
+            transition:all .3s cubic-bezier(.22,1,.36,1);text-transform:uppercase;width:100%;font-size:14px;
+            position:relative;overflow:hidden;
+        }
+        .btn-primary::after{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(255,255,255,.15),transparent);opacity:0;transition:opacity .3s}
+        .btn-primary:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 8px 28px rgba(249,115,22,.35)}
+        .btn-primary:hover:not(:disabled)::after{opacity:1}
+        .btn-primary:active:not(:disabled){transform:translateY(0)}
+        .btn-primary:disabled{opacity:.4;cursor:not-allowed;transform:none!important;box-shadow:none!important}
+        .btn-secondary{
+            background:rgba(27,58,92,.45);color:#94A3B8;font-family:'Source Sans 3',sans-serif;font-weight:600;
+            border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:10px 14px;cursor:pointer;transition:all .25s;font-size:13px;
+        }
+        .btn-secondary:hover:not(:disabled){background:rgba(27,58,92,.75);border-color:rgba(249,115,22,.25);color:#E2E8F0}
+        .btn-secondary:disabled{opacity:.4;cursor:not-allowed}
+        .btn-secondary.active{background:rgba(249,115,22,.12);border-color:rgba(249,115,22,.5);color:#FB923C}
+        .btn-secondary.active-red{background:rgba(239,68,68,.12);border-color:rgba(239,68,68,.5);color:#F87171}
+        .input-field{
+            background:rgba(10,22,40,.55);border:1px solid rgba(255,255,255,.07);border-radius:8px;padding:10px 14px;color:#F1F5F9;
+            font-family:'Source Sans 3',sans-serif;font-size:15px;width:100%;transition:border-color .25s,box-shadow .25s;outline:none;
+        }
+        .input-field:focus{border-color:#F97316;box-shadow:0 0 0 3px rgba(249,115,22,.1)}
+        .drop-zone{
+            border:2px dashed rgba(249,115,22,.25);border-radius:14px;padding:48px 20px;text-align:center;cursor:pointer;
+            transition:all .35s;background:rgba(10,22,40,.35);
+        }
+        .drop-zone:hover,.drop-zone.dragover{border-color:#F97316;background:rgba(249,115,22,.04);box-shadow:inset 0 0 40px rgba(249,115,22,.03)}
+        .drop-zone .upload-icon{font-size:42px;color:#F97316;margin-bottom:14px;transition:transform .4s cubic-bezier(.22,1,.36,1)}
+        .drop-zone:hover .upload-icon{transform:translateY(-4px) scale(1.08)}
+        .video-container{position:relative;border-radius:14px 14px 0 0;overflow:hidden;background:#000}
+        .video-container video{width:100%;display:block;max-height:50vh;object-fit:contain;background:#000}
+        .video-controls{
+            display:flex;align-items:center;gap:6px;padding:10px 14px;background:rgba(10,22,40,.97);
+            border-top:1px solid rgba(255,255,255,.05);border-radius:0 0 14px 14px;
+        }
+        .frame-btn{
+            width:34px;height:34px;display:flex;align-items:center;justify-content:center;
+            background:rgba(27,58,92,.45);border:1px solid rgba(255,255,255,.06);border-radius:8px;color:#94A3B8;
+            cursor:pointer;transition:all .2s;font-size:13px;flex-shrink:0;
+        }
+        .frame-btn:hover{background:rgba(249,115,22,.18);border-color:rgba(249,115,22,.4);color:#FB923C}
+        .btn-reset:hover{background:rgba(239,68,68,.18)!important;border-color:rgba(239,68,68,.4)!important;color:#F87171!important}
+        .time-slider{flex:1;-webkit-appearance:none;appearance:none;height:4px;background:rgba(255,255,255,.08);border-radius:2px;outline:none;cursor:pointer}
+        .time-slider::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;background:#F97316;border-radius:50%;cursor:pointer;box-shadow:0 0 10px rgba(249,115,22,.4)}
+        .time-slider::-moz-range-thumb{width:14px;height:14px;background:#F97316;border:none;border-radius:50%;cursor:pointer}
+        .fps-slider{-webkit-appearance:none;appearance:none;width:100%;height:5px;background:rgba(255,255,255,.08);border-radius:3px;outline:none;cursor:pointer}
+        .fps-slider::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;background:linear-gradient(135deg,#FB923C,#F97316);border-radius:50%;cursor:pointer;box-shadow:0 2px 8px rgba(249,115,22,.35)}
+        .fps-slider::-moz-range-thumb{width:20px;height:20px;background:linear-gradient(135deg,#FB923C,#F97316);border:none;border-radius:50%;cursor:pointer}
+        .speedometer-wrap{width:220px;height:130px;margin:0 auto;overflow:hidden}
+        .speed-value-text{font-family:'Oswald',sans-serif;font-size:52px;font-weight:700;color:#F8FAFC;text-align:center;line-height:1;transition:color .4s}
+        .speed-unit-text{font-family:'Oswald',sans-serif;font-size:14px;font-weight:400;color:#64748B;text-align:center;letter-spacing:3px;text-transform:uppercase}
+        .court-svg{width:100%;display:block;cursor:crosshair}
+
+        /* ===== 2D/3D VIEW TOGGLE ===== */
+        .view-toggle{
+            display:flex;background:rgba(10,22,40,.6);border:1px solid rgba(255,255,255,.06);
+            border-radius:9px;padding:2px;gap:2px;
+        }
+        .view-toggle-btn{
+            flex:1;padding:6px 10px;border:none;background:transparent;border-radius:7px;
+            font-family:'Oswald',sans-serif;font-size:11px;letter-spacing:.6px;text-transform:uppercase;
+            color:#64748B;cursor:pointer;transition:all .25s;
+        }
+        .view-toggle-btn.active{background:linear-gradient(135deg,#F97316,#C2410C);color:#fff;box-shadow:0 2px 10px rgba(249,115,22,.25)}
+        .view-toggle-btn:hover:not(.active){color:#94A3B8;background:rgba(255,255,255,.03)}
+
+        .court-3d-wrap{
+            position:relative;width:100%;aspect-ratio:1/0.78;border-radius:10px;overflow:hidden;
+            background:radial-gradient(ellipse at 50% 20%,#15233D 0%,#080F1D 75%);
+        }
+        .court-3d-wrap canvas{display:block;width:100%!important;height:100%!important;cursor:crosshair}
+        .court-3d-loading{
+            position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+            gap:8px;color:#64748B;font-size:11px;background:#080F1D;transition:opacity .4s;
+        }
+        .court-3d-loading.hidden-3d{opacity:0;pointer-events:none}
+        .court-3d-hint{
+            position:absolute;bottom:8px;left:50%;transform:translateX(-50%);
+            font-size:9px;color:rgba(255,255,255,.28);letter-spacing:.5px;text-transform:uppercase;
+            background:rgba(8,15,29,.6);padding:3px 9px;border-radius:6px;white-space:nowrap;pointer-events:none;
+        }
+        .court-3d-replay{
+            position:absolute;top:8px;right:8px;width:30px;height:30px;border-radius:8px;
+            background:rgba(8,15,29,.75);border:1px solid rgba(249,115,22,.25);color:#FB923C;
+            display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .2s;font-size:12px;
+        }
+        .court-3d-replay:hover{background:rgba(249,115,22,.18);border-color:rgba(249,115,22,.5)}
+        .court-3d-replay:disabled{opacity:.3;cursor:not-allowed}
+        .marker-pulse{animation:markerPulse 1.6s ease-in-out infinite}
+        @keyframes markerPulse{0%,100%{opacity:.9}50%{opacity:.4}}
+        .toast-el{
+            position:fixed;bottom:28px;left:50%;transform:translateX(-50%) translateY(120px);
+            background:rgba(15,29,51,.95);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+            border:1px solid rgba(249,115,22,.25);border-radius:12px;padding:13px 26px;color:#F1F5F9;font-size:14px;z-index:9999;
+            transition:transform .45s cubic-bezier(.22,1,.36,1),opacity .45s;
+            max-width:480px;text-align:center;pointer-events:none;opacity:0;
+        }
+        .toast-el.visible{transform:translateX(-50%) translateY(0);opacity:1}
+        .toast-el.err{border-color:rgba(239,68,68,.5)}
+        .export-card-hidden{position:absolute;left:-9999px;top:0;width:440px;background:linear-gradient(145deg,#0F1D33,#1B3A5C 60%,#132240);border:2px solid rgba(249,115,22,.3);border-radius:22px;padding:36px;z-index:-1}
+        .fade-up{opacity:0;transform:translateY(14px);animation:fadeUp .65s ease-out forwards}
+        @keyframes fadeUp{to{opacity:1;transform:translateY(0)}}
+        ::-webkit-scrollbar{width:5px}
+        ::-webkit-scrollbar-track{background:transparent}
+        ::-webkit-scrollbar-thumb{background:rgba(255,255,255,.08);border-radius:3px}
+        @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+        @media(max-width:767px){.speed-value-text{font-size:42px}.speedometer-wrap{width:180px;height:108px}.video-container video{max-height:35vh}}
+
+        /* ===== AUTH MODAL ===== */
+        .modal-overlay{
+            position:fixed;inset:0;background:rgba(6,14,26,.85);backdrop-filter:blur(8px);
+            z-index:1000;display:flex;align-items:center;justify-content:center;
+            opacity:0;pointer-events:none;transition:opacity .3s;
+        }
+        .modal-overlay.open{opacity:1;pointer-events:all}
+        .modal-box{
+            background:rgba(15,29,51,.98);border:1px solid rgba(249,115,22,.18);border-radius:20px;
+            padding:32px;width:min(420px,92vw);box-shadow:0 30px 80px rgba(0,0,0,.6);
+            transform:translateY(20px) scale(.97);transition:transform .35s cubic-bezier(.22,1,.36,1);
+        }
+        .modal-overlay.open .modal-box{transform:translateY(0) scale(1)}
+        .modal-tab{
+            flex:1;padding:9px;text-align:center;font-family:'Oswald',sans-serif;font-size:13px;letter-spacing:.8px;
+            text-transform:uppercase;border:none;background:transparent;cursor:pointer;
+            color:#64748B;border-bottom:2px solid transparent;transition:all .2s;
+        }
+        .modal-tab.active{color:#F97316;border-bottom-color:#F97316}
+        .modal-form{display:none}
+        .modal-form.active{display:block}
+        .modal-err{font-size:12px;color:#F87171;min-height:16px;margin-top:6px;text-align:center}
+        .btn-modal-primary{
+            background:linear-gradient(135deg,#F97316,#C2410C);color:#fff;font-family:'Oswald',sans-serif;font-weight:600;
+            letter-spacing:.8px;border:none;border-radius:10px;padding:12px 20px;cursor:pointer;
+            width:100%;font-size:14px;text-transform:uppercase;transition:all .25s;margin-top:6px;
+        }
+        .btn-modal-primary:hover{box-shadow:0 6px 20px rgba(249,115,22,.35);transform:translateY(-1px)}
+        .btn-modal-primary:disabled{opacity:.5;cursor:not-allowed;transform:none;box-shadow:none}
+
+        /* ===== AUTH HEADER BUTTON ===== */
+        .btn-auth{
+            background:rgba(27,58,92,.55);border:1px solid rgba(249,115,22,.2);border-radius:10px;
+            padding:8px 14px;color:#94A3B8;font-size:12px;cursor:pointer;transition:all .25s;
+            display:flex;align-items:center;gap:6px;white-space:nowrap;
+        }
+        .btn-auth:hover{background:rgba(249,115,22,.1);border-color:rgba(249,115,22,.4);color:#E2E8F0}
+        .btn-logout{
+            background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.2);border-radius:8px;
+            padding:5px 10px;color:#F87171;font-size:11px;cursor:pointer;transition:all .2s;
+        }
+        .btn-logout:hover{background:rgba(239,68,68,.2);border-color:rgba(239,68,68,.4)}
+
+        /* ===== HISTORY PANEL ===== */
+        .history-item{
+            padding:9px 12px;border-radius:9px;background:rgba(10,22,40,.5);border:1px solid rgba(255,255,255,.04);
+            cursor:pointer;transition:all .2s;margin-bottom:6px;
+        }
+        .history-item:hover{background:rgba(249,115,22,.07);border-color:rgba(249,115,22,.2)}
+        .history-item:last-child{margin-bottom:0}
+        .history-scroll{max-height:200px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.06) transparent;}
+    </style>
+</head>
+<body class="font-body">
+
+    <div id="toast" class="toast-el" role="alert" aria-live="polite"></div>
+    <div id="exportCard" class="export-card-hidden"></div>
+
+    <!-- ===== AUTH MODAL ===== -->
+    <div id="authModal" class="modal-overlay" role="dialog" aria-modal="true" aria-label="Авторизация">
+        <div class="modal-box">
+            <div class="flex items-center justify-between mb-6">
+                <div class="flex items-center gap-2">
+                    <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-vball-500 to-vball-600 flex items-center justify-center">
+                        <i class="fas fa-user text-white text-sm"></i>
+                    </div>
+                    <span class="font-display text-base font-semibold text-white tracking-wider">АККАУНТ</span>
+                </div>
+                <button id="modalCloseBtn" class="w-8 h-8 rounded-lg flex items-center justify-center text-slate-600 hover:text-slate-300 hover:bg-white/5 transition-all text-lg" aria-label="Закрыть">×</button>
+            </div>
+
+            <div class="flex border-b border-white/5 mb-6">
+                <button class="modal-tab active" id="tabLogin">Вход</button>
+                <button class="modal-tab" id="tabRegister">Регистрация</button>
+            </div>
+
+            <!-- Login form -->
+            <div class="modal-form active" id="formLogin">
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-[11px] text-slate-500 mb-1.5 font-semibold uppercase tracking-wider">Email</label>
+                        <input type="email" id="loginEmail" class="input-field" placeholder="player@example.com" autocomplete="email">
+                    </div>
+                    <div>
+                        <label class="block text-[11px] text-slate-500 mb-1.5 font-semibold uppercase tracking-wider">Пароль</label>
+                        <input type="password" id="loginPass" class="input-field" placeholder="••••••••" autocomplete="current-password">
+                    </div>
+                    <div id="loginErr" class="modal-err"></div>
+                    <button id="loginSubmitBtn" class="btn-modal-primary">
+                        <i class="fas fa-right-to-bracket mr-2"></i>Войти
+                    </button>
+                </div>
+            </div>
+
+            <!-- Register form -->
+            <div class="modal-form" id="formRegister">
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-[11px] text-slate-500 mb-1.5 font-semibold uppercase tracking-wider">Email</label>
+                        <input type="email" id="regEmail" class="input-field" placeholder="player@example.com" autocomplete="email">
+                    </div>
+                    <div>
+                        <label class="block text-[11px] text-slate-500 mb-1.5 font-semibold uppercase tracking-wider">Пароль (мин. 6 символов)</label>
+                        <input type="password" id="regPass" class="input-field" placeholder="••••••••" autocomplete="new-password">
+                    </div>
+                    <div id="regErr" class="modal-err"></div>
+                    <button id="regSubmitBtn" class="btn-modal-primary">
+                        <i class="fas fa-user-plus mr-2"></i>Создать аккаунт
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="app-grid">
+
+        <!-- HEADER -->
+        <header class="app-header flex items-center justify-between fade-up">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-vball-500 to-vball-600 flex items-center justify-center shadow-lg shadow-vball-500/20">
+                    <i class="fas fa-volleyball-ball text-white text-lg"></i>
+                </div>
+                <div>
+                    <h1 class="font-display text-xl font-bold text-white tracking-widest leading-tight">SPIKESPEED</h1>
+                    <p class="text-[11px] text-slate-500 font-medium -mt-0.5">Анализатор скорости удара</p>
+                </div>
+            </div>
+            <!-- Auth controls (right side of header) -->
+            <div class="flex items-center gap-3">
+                <div class="text-[11px] text-slate-600 hidden sm:flex items-center gap-1.5 mr-2">
+                    <i class="fas fa-shield-halved text-vball-500/40"></i>
+                    Все вычисления локально в браузере
+                </div>
+                <!-- Guest state -->
+                <div id="authGuest" class="flex items-center">
+                    <button id="openAuthBtn" class="btn-auth">
+                        <i class="fas fa-user-circle text-vball-400"></i>
+                        <span>Войти в аккаунт</span>
+                    </button>
+                </div>
+                <!-- Logged-in state -->
+                <div id="authUser" class="hidden items-center gap-2">
+                    <div class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-vball-500/10 border border-vball-500/20">
+                        <i class="fas fa-circle-check text-vball-400 text-xs"></i>
+                        <span id="userEmailDisplay" class="text-[12px] text-slate-300 font-medium max-w-[160px] truncate"></span>
+                    </div>
+                    <button id="logoutBtn" class="btn-logout">
+                        <i class="fas fa-right-from-bracket mr-1"></i>Выйти
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- ЛЕВАЯ ПАНЕЛЬ -->
+        <aside class="params-panel flex flex-col gap-3 fade-up" style="animation-delay:.08s">
+            <div class="card">
+                <h2 class="font-display text-xs font-semibold text-vball-400 uppercase tracking-widest mb-5">
+                    <i class="fas fa-sliders-h mr-2 text-[10px]"></i>Параметры
+                </h2>
+                <div class="mb-4">
+                    <label class="block text-[11px] text-slate-500 mb-1.5 font-semibold uppercase tracking-wider" for="hitHeight">Высота съёма (м)</label>
+                    <input type="number" id="hitHeight" class="input-field" value="3.10" min="2" max="4.5" step="0.01">
+                </div>
+                <div class="mb-4">
+                    <label class="block text-[11px] text-slate-500 mb-1.5 font-semibold uppercase tracking-wider" for="netHeight">Высота сетки (м)</label>
+                    <div class="flex gap-2 mb-2">
+                        <button class="btn-secondary flex-1 net-preset active text-center !text-xs" data-value="2.43">Муж. 2.43</button>
+                        <button class="btn-secondary flex-1 net-preset text-center !text-xs" data-value="2.24">Жен. 2.24</button>
+                    </div>
+                    <input type="number" id="netHeight" class="input-field" value="2.43" min="2" max="3" step="0.01">
+                </div>
+                <div class="mb-6">
+                    <label class="block text-[11px] text-slate-500 mb-2 font-semibold uppercase tracking-wider" for="fpsSlider">
+                        FPS видео: <span id="fpsValue" class="text-vball-400 font-bold text-sm">60</span>
+                    </label>
+                    <input type="range" id="fpsSlider" class="fps-slider" min="24" max="120" step="1" value="60">
+                    <div class="flex justify-between text-[10px] text-slate-600 mt-1.5 px-0.5"><span>24</span><span>60</span><span>120</span></div>
+                </div>
+                <button id="calcBtn" class="btn-primary" disabled>
+                    <i class="fas fa-bolt mr-2"></i>Рассчитать скорость
+                </button>
+            </div>
+            <div class="card">
+                <h2 class="font-display text-xs font-semibold text-slate-500 uppercase tracking-widest mb-3">
+                    <i class="fas fa-list-ol mr-2 text-[10px]"></i>Инструкция
+                </h2>
+                <ol class="text-[12px] text-slate-500 space-y-2.5 list-none">
+                    <li class="flex gap-2.5 items-start">
+                        <span class="flex-shrink-0 w-5 h-5 rounded-md bg-navy-600/50 text-vball-400 text-[10px] font-bold flex items-center justify-center font-display">1</span>
+                        <span>Загрузи видео нападающего удара</span>
+                    </li>
+                    <li class="flex gap-2.5 items-start">
+                        <span class="flex-shrink-0 w-5 h-5 rounded-md bg-navy-600/50 text-vball-400 text-[10px] font-bold flex items-center justify-center font-display">2</span>
+                        <span>Найди кадр удара и приземления, зафиксируй их</span>
+                    </li>
+                    <li class="flex gap-2.5 items-start">
+                        <span class="flex-shrink-0 w-5 h-5 rounded-md bg-navy-600/50 text-vball-400 text-[10px] font-bold flex items-center justify-center font-display">3</span>
+                        <span>На карте: <b class="text-vball-400">точку удара</b> на своей половине (снизу) и <b class="text-red-400">точку приземления</b> на стороне соперника (сверху)</span>
+                    </li>
+                    <li class="flex gap-2.5 items-start">
+                        <span class="flex-shrink-0 w-5 h-5 rounded-md bg-navy-600/50 text-vball-400 text-[10px] font-bold flex items-center justify-center font-display">4</span>
+                        <span>Нажми «Рассчитать скорость»</span>
+                    </li>
+                </ol>
+                <div class="mt-4 pt-3 border-t border-white/5 text-[10px] text-slate-600">
+                    <i class="fas fa-keyboard mr-1"></i>
+                    <kbd class="px-1 py-0.5 bg-navy-700 rounded text-slate-400">Space</kbd> пауза,
+                    <kbd class="px-1 py-0.5 bg-navy-700 rounded text-slate-400">← →</kbd> кадры,
+                    <kbd class="px-1 py-0.5 bg-navy-700 rounded text-slate-400">H</kbd> удар,
+                    <kbd class="px-1 py-0.5 bg-navy-700 rounded text-slate-400">L</kbd> приземл.
+                </div>
+            </div>
+        </aside>
+
+        <!-- ЦЕНТРАЛЬНАЯ ПАНЕЛЬ -->
+        <section class="video-panel flex flex-col gap-3 fade-up" style="animation-delay:.16s">
+            <div class="card !p-0 overflow-hidden">
+                <div id="dropZone" class="drop-zone" role="button" tabindex="0">
+                    <div class="upload-icon"><i class="fas fa-cloud-arrow-up"></i></div>
+                    <p class="text-sm text-slate-400 mb-1 font-medium">Перетащи видео сюда или нажми для выбора</p>
+                    <p class="text-xs text-slate-600">MP4, MOV, WebM — до 500 МБ</p>
+                    <input type="file" id="fileInput" accept="video/*" class="hidden">
+                </div>
+                <div id="videoWrapper" class="hidden">
+                    <div class="video-container">
+                        <video id="videoPlayer" preload="auto"></video>
+                    </div>
+                    <div class="video-controls">
+                        <button id="playBtn" class="frame-btn" aria-label="Пауза/Воспроизведение"><i class="fas fa-play"></i></button>
+                        <button id="frameBackBtn" class="frame-btn" title="Назад на 1 кадр"><i class="fas fa-backward-step"></i></button>
+                        <button id="frameFwdBtn" class="frame-btn" title="Вперёд на 1 кадр"><i class="fas fa-forward-step"></i></button>
+                        <input type="range" id="timeSlider" class="time-slider" min="0" max="100" step="0.001" value="0">
+                        <span id="timeDisplay" class="text-[11px] text-slate-600 w-[80px] text-right font-mono flex-shrink-0">00:00.000</span>
+                        <button id="resetBtn" class="frame-btn btn-reset" style="display:none;" title="Удалить видео и сбросить проект" aria-label="Сбросить проект"><i class="fas fa-trash-can"></i></button>
+                    </div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="flex items-center justify-between mb-4">
+                    <span class="text-[11px] text-slate-600 font-semibold uppercase tracking-wider">Текущий кадр</span>
+                    <span id="currentFrame" class="font-display text-2xl font-bold text-white tabular-nums">—</span>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <button id="markHitBtn" class="btn-secondary text-center !py-3" disabled>
+                        <i class="fas fa-hand-fist mr-1.5 text-vball-500/70"></i>
+                        <span class="block text-[12px]">Зафиксировать удар</span>
+                        <span id="hitFrameLabel" class="block text-[10px] text-slate-600 mt-1 font-mono">Кадр: —</span>
+                    </button>
+                    <button id="markLandBtn" class="btn-secondary text-center !py-3" disabled>
+                        <i class="fas fa-bullseye mr-1.5 text-red-500/70"></i>
+                        <span class="block text-[12px]">Зафиксировать приземление</span>
+                        <span id="landFrameLabel" class="block text-[10px] text-slate-600 mt-1 font-mono">Кадр: —</span>
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- ПРАВАЯ ПАНЕЛЬ -->
+        <aside class="results-panel flex flex-col gap-3 fade-up" style="animation-delay:.24s">
+
+            <!-- Карта площадки -->
+            <div class="card">
+                <div class="flex items-center justify-between mb-2 gap-2">
+                    <h2 class="font-display text-xs font-semibold text-vball-400 uppercase tracking-widest">
+                        <i class="fas fa-map-marked-alt mr-2 text-[10px]"></i>Карта площадки (9×18 м)
+                    </h2>
+                    <div class="view-toggle" style="width:104px;flex-shrink:0;">
+                        <button id="view2dBtn" class="view-toggle-btn active">2D</button>
+                        <button id="view3dBtn" class="view-toggle-btn">3D</button>
+                    </div>
+                </div>
+                <div class="flex gap-2 mb-3">
+                    <button id="modeHitBtn" class="btn-secondary active flex-1 text-center !text-xs !py-2">
+                        <i class="fas fa-hand-fist mr-1 text-vball-400"></i>Точка удара
+                    </button>
+                    <button id="modeLandBtn" class="btn-secondary flex-1 text-center !text-xs !py-2">
+                        <i class="fas fa-bullseye mr-1 text-red-400"></i>Точка приземления
+                    </button>
+                </div>
+                <div id="view2dContainer" class="bg-navy-950 rounded-lg p-1.5">
+                    <svg id="courtMap" class="court-svg" viewBox="-1.2 -0.8 11.4 20.6" preserveAspectRatio="xMidYMid meet">
+                        <rect x="0" y="0" width="9" height="18" fill="#080F1D"/>
+                        <rect x="0" y="9" width="9" height="9" fill="none" stroke="#F97316" stroke-width="0.08" opacity="0.2"/>
+                        <rect x="0" y="0" width="9" height="9" fill="none" stroke="#EF4444" stroke-width="0.08" opacity="0.12"/>
+                        <rect x="0" y="12" width="3" height="6" fill="rgba(249,115,22,.018)"/>
+                        <rect x="3" y="12" width="3" height="6" fill="rgba(255,255,255,.007)"/>
+                        <rect x="6" y="12" width="3" height="6" fill="rgba(249,115,22,.018)"/>
+                        <rect x="0" y="9"  width="3" height="3" fill="rgba(255,255,255,.007)"/>
+                        <rect x="3" y="9"  width="3" height="3" fill="rgba(249,115,22,.018)"/>
+                        <rect x="6" y="9"  width="3" height="3" fill="rgba(255,255,255,.007)"/>
+                        <rect x="0" y="6" width="3" height="3" fill="rgba(255,255,255,.007)"/>
+                        <rect x="3" y="6" width="3" height="3" fill="rgba(249,115,22,.012)"/>
+                        <rect x="6" y="6" width="3" height="3" fill="rgba(255,255,255,.007)"/>
+                        <rect x="0" y="0" width="3" height="6" fill="rgba(249,115,22,.012)"/>
+                        <rect x="3" y="0" width="3" height="6" fill="rgba(255,255,255,.007)"/>
+                        <rect x="6" y="0" width="3" height="6" fill="rgba(249,115,22,.012)"/>
+                        <rect x="0" y="0" width="9" height="18" fill="none" stroke="rgba(255,255,255,.45)" stroke-width="0.06"/>
+                        <line x1="0" y1="9" x2="9" y2="9" stroke="#F97316" stroke-width="0.12" stroke-dasharray="0.3 0.18" opacity="0.85"/>
+                        <line x1="0" y1="12" x2="9" y2="12" stroke="rgba(255,255,255,.2)" stroke-width="0.04" stroke-dasharray="0.2 0.14"/>
+                        <line x1="0" y1="6" x2="9" y2="6" stroke="rgba(255,255,255,.2)" stroke-width="0.04" stroke-dasharray="0.2 0.14"/>
+                        <line x1="4.5" y1="0" x2="4.5" y2="18" stroke="rgba(255,255,255,.08)" stroke-width="0.025" stroke-dasharray="0.15 0.15"/>
+                        <line x1="3" y1="0" x2="3" y2="18" stroke="rgba(255,255,255,.035)" stroke-width="0.02" stroke-dasharray="0.1 0.18"/>
+                        <line x1="6" y1="0" x2="6" y2="18" stroke="rgba(255,255,255,.035)" stroke-width="0.02" stroke-dasharray="0.1 0.18"/>
+                        <text x="1.5" y="15" fill="rgba(255,255,255,.1)" font-size="0.65" text-anchor="middle" font-family="Oswald" font-weight="600">5</text>
+                        <text x="4.5" y="15" fill="rgba(255,255,255,.1)" font-size="0.65" text-anchor="middle" font-family="Oswald" font-weight="600">6</text>
+                        <text x="7.5" y="15" fill="rgba(255,255,255,.1)" font-size="0.65" text-anchor="middle" font-family="Oswald" font-weight="600">1</text>
+                        <text x="1.5" y="10.5" fill="rgba(255,255,255,.1)" font-size="0.65" text-anchor="middle" font-family="Oswald" font-weight="600">4</text>
+                        <text x="4.5" y="10.5" fill="rgba(255,255,255,.1)" font-size="0.65" text-anchor="middle" font-family="Oswald" font-weight="600">3</text>
+                        <text x="7.5" y="10.5" fill="rgba(255,255,255,.1)" font-size="0.65" text-anchor="middle" font-family="Oswald" font-weight="600">2</text>
+                        <text x="1.5" y="7.5" fill="rgba(255,255,255,.065)" font-size="0.65" text-anchor="middle" font-family="Oswald" font-weight="600">2</text>
+                        <text x="4.5" y="7.5" fill="rgba(255,255,255,.065)" font-size="0.65" text-anchor="middle" font-family="Oswald" font-weight="600">3</text>
+                        <text x="7.5" y="7.5" fill="rgba(255,255,255,.065)" font-size="0.65" text-anchor="middle" font-family="Oswald" font-weight="600">4</text>
+                        <text x="1.5" y="3" fill="rgba(255,255,255,.065)" font-size="0.65" text-anchor="middle" font-family="Oswald" font-weight="600">1</text>
+                        <text x="4.5" y="3" fill="rgba(255,255,255,.065)" font-size="0.65" text-anchor="middle" font-family="Oswald" font-weight="600">6</text>
+                        <text x="7.5" y="3" fill="rgba(255,255,255,.065)" font-size="0.65" text-anchor="middle" font-family="Oswald" font-weight="600">5</text>
+                        <text x="4.5" y="17.5" fill="rgba(249,115,22,.28)" font-size="0.24" text-anchor="middle" font-family="Source Sans 3" font-weight="600" letter-spacing="0.12">НАША ПЛОЩАДКА</text>
+                        <text x="4.5" y="9.55" fill="rgba(249,115,22,.35)" font-size="0.28" text-anchor="middle" font-family="Oswald" font-weight="500" letter-spacing="0.08">СЕТКА</text>
+                        <text x="4.5" y="0.4" fill="rgba(239,68,68,.2)" font-size="0.24" text-anchor="middle" font-family="Source Sans 3" font-weight="600" letter-spacing="0.12">СОПЕРНИК</text>
+                        <text x="-0.6" y="18.3" fill="rgba(255,255,255,.16)" font-size="0.28" font-family="Source Sans 3" text-anchor="end">0м</text>
+                        <text x="-0.6" y="12.3" fill="rgba(255,255,255,.16)" font-size="0.28" font-family="Source Sans 3" text-anchor="end">6м</text>
+                        <text x="-0.6" y="9.3" fill="rgba(249,115,22,.4)" font-size="0.28" font-family="Source Sans 3" text-anchor="end" font-weight="600">9м</text>
+                        <text x="-0.6" y="6.3" fill="rgba(255,255,255,.16)" font-size="0.28" font-family="Source Sans 3" text-anchor="end">12м</text>
+                        <text x="-0.6" y="0.3" fill="rgba(255,255,255,.16)" font-size="0.28" font-family="Source Sans 3" text-anchor="end">18м</text>
+                        <text x="0.1" y="19.5" fill="rgba(255,255,255,.16)" font-size="0.28" font-family="Source Sans 3">0м</text>
+                        <text x="4.5" y="19.5" fill="rgba(255,255,255,.16)" font-size="0.28" font-family="Source Sans 3" text-anchor="middle">4.5м</text>
+                        <text x="8.9" y="19.5" fill="rgba(255,255,255,.16)" font-size="0.28" font-family="Source Sans 3" text-anchor="end">9м</text>
+                        <line id="trajectoryLine" x1="4.5" y1="11" x2="4.5" y2="5" stroke="rgba(255,255,255,.1)" stroke-width="0.04" stroke-dasharray="0.2 0.14"/>
+                        <g id="hitMarkerGroup" style="display:none;">
+                            <circle id="hitRing" cx="4.5" cy="11" r="0.5" fill="none" stroke="#F97316" stroke-width="0.035" opacity="0.35" stroke-dasharray="0.1 0.08" class="marker-pulse"/>
+                            <circle id="hitDot" cx="4.5" cy="11" r="0.22" fill="#F97316" stroke="#fff" stroke-width="0.06" opacity="0.9"/>
+                            <line id="hitCH" x1="4.05" y1="11" x2="4.95" y2="11" stroke="#fff" stroke-width="0.04" opacity="0.7"/>
+                            <line id="hitCV" x1="4.5" y1="10.55" x2="4.5" y2="11.45" stroke="#fff" stroke-width="0.04" opacity="0.7"/>
+                            <text id="hitLbl" x="4.5" y="10.05" fill="#F97316" font-size="0.32" text-anchor="middle" font-family="Oswald" font-weight="600" opacity="0.85">УДАР</text>
+                        </g>
+                        <g id="landMarkerGroup" style="display:none;">
+                            <circle id="landRing" cx="4.5" cy="5" r="0.5" fill="none" stroke="#EF4444" stroke-width="0.035" opacity="0.35" stroke-dasharray="0.1 0.08" class="marker-pulse"/>
+                            <circle id="landDot" cx="4.5" cy="5" r="0.22" fill="#EF4444" stroke="#fff" stroke-width="0.06" opacity="0.9"/>
+                            <line id="landCH" x1="4.05" y1="5" x2="4.95" y2="5" stroke="#fff" stroke-width="0.04" opacity="0.7"/>
+                            <line id="landCV" x1="4.5" y1="4.55" x2="4.5" y2="5.45" stroke="#fff" stroke-width="0.04" opacity="0.7"/>
+                            <text id="landLbl" x="4.5" y="4.05" fill="#EF4444" font-size="0.32" text-anchor="middle" font-family="Oswald" font-weight="600" opacity="0.85">ПРИЗЕМЛ.</text>
+                        </g>
+                    </svg>
+                </div>
+                <div id="view3dContainer" class="hidden">
+                    <div class="court-3d-wrap" id="court3dWrap">
+                        <div class="court-3d-loading" id="court3dLoading">
+                            <i class="fas fa-volleyball-ball fa-spin" style="font-size:20px;color:#F97316;opacity:.6"></i>
+                            <span>Загрузка 3D-площадки…</span>
+                        </div>
+                        <button id="replay3dBtn" class="court-3d-replay" title="Повторить полёт мяча" disabled>
+                            <i class="fas fa-rotate-right"></i>
+                        </button>
+                        <div class="court-3d-hint">Клик по полу — точка · зажми и тяни — вращение</div>
+                    </div>
+                </div>
+                <div class="space-y-1.5 mt-2.5 px-1">
+                    <div class="flex justify-between items-center">
+                        <span class="text-[10px] text-vball-400 font-semibold"><i class="fas fa-hand-fist mr-1"></i>Удар</span>
+                        <span class="text-[10px] text-slate-600">X: <span id="hitCoordX" class="text-slate-400 font-mono font-semibold">—</span> м &nbsp;Y: <span id="hitCoordY" class="text-slate-400 font-mono font-semibold">—</span> м</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-[10px] text-red-400 font-semibold"><i class="fas fa-bullseye mr-1"></i>Приземление</span>
+                        <span class="text-[10px] text-slate-600">X: <span id="landCoordX" class="text-slate-400 font-mono font-semibold">—</span> м &nbsp;Y: <span id="landCoordY" class="text-slate-400 font-mono font-semibold">—</span> м</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Результаты -->
+            <div class="card flex-1 flex flex-col">
+                <h2 class="font-display text-xs font-semibold text-vball-400 uppercase tracking-widest mb-3">
+                    <i class="fas fa-gauge-high mr-2 text-[10px]"></i>Результат
+                </h2>
+                <div class="speedometer-wrap mb-1">
+                    <svg id="speedSvg" viewBox="0 0 200 125" width="220" height="125"></svg>
+                </div>
+                <div class="text-center mb-2">
+                    <div id="speedValue" class="speed-value-text">—</div>
+                    <div class="speed-unit-text mt-0.5">км/ч</div>
+                </div>
+                <div id="comparison" class="text-center text-[13px] text-slate-600 mb-4 min-h-[44px] flex items-center justify-center leading-snug">
+                    Загрузи видео и зафиксируй кадры
+                </div>
+                <div id="calcDetails" class="hidden space-y-2 mb-4 p-3 rounded-xl bg-navy-950/60 text-[12px]">
+                    <div class="flex justify-between text-slate-500"><span>Точка удара</span><span id="detailHit" class="text-vball-400 font-mono">—</span></div>
+                    <div class="flex justify-between text-slate-500"><span>Точка приземления</span><span id="detailLand" class="text-red-400 font-mono">—</span></div>
+                    <div class="h-px bg-white/5 my-1"></div>
+                    <div class="flex justify-between text-slate-500"><span>Время полёта</span><span id="detailTime" class="text-slate-300 font-mono">—</span></div>
+                    <div class="flex justify-between text-slate-500"><span>Горизонт. расстояние</span><span id="detailHoriz" class="text-slate-300 font-mono">—</span></div>
+                    <div class="flex justify-between text-slate-500"><span>Расстояние 3D</span><span id="detailDist" class="text-slate-300 font-mono">—</span></div>
+                    <div class="flex justify-between text-slate-500"><span>Скорость</span><span id="detailMs" class="text-slate-300 font-mono">—</span></div>
+                    <div class="flex justify-between text-slate-500"><span>Кадры (удар → приземл.)</span><span id="detailFrames" class="text-slate-300 font-mono">—</span></div>
+                </div>
+                <button id="shareBtn" class="btn-primary mt-auto" disabled>
+                    <i class="fas fa-download mr-2"></i>Скачать карточку результата
+                </button>
+            </div>
+
+            <!-- История ударов -->
+            <div class="card">
+                <h2 class="font-display text-xs font-semibold text-slate-400 uppercase tracking-widest mb-3">
+                    <i class="fas fa-clock-rotate-left mr-2 text-[10px]"></i>История ударов
+                </h2>
+                <!-- Guest state -->
+                <div id="historyGuest" class="text-center py-4">
+                    <i class="fas fa-lock text-slate-700 text-2xl mb-2 block"></i>
+                    <p class="text-[12px] text-slate-600">Войдите в аккаунт,<br>чтобы сохранять историю</p>
+                </div>
+                <!-- Loading state -->
+                <div id="historyLoading" class="hidden text-center py-3">
+                    <i class="fas fa-spinner fa-spin text-vball-400 text-lg"></i>
+                </div>
+                <!-- Empty state -->
+                <div id="historyEmpty" class="hidden text-center py-4">
+                    <i class="fas fa-volleyball-ball text-slate-700 text-2xl mb-2 block"></i>
+                    <p class="text-[12px] text-slate-600">Расчёты пока не сохранены.</p>
+                    <p class="text-[11px] text-slate-700 mt-1">Нажми «Рассчитать» для первого удара!</p>
+                </div>
+                <!-- History list -->
+                <div id="historyList" class="hidden history-scroll">
+                    <!-- Items injected by JS -->
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <script>
+    (function(){
+        'use strict';
+
+        var API = 'http://localhost:8000';
+
+        /* ===== AUTH STATE ===== */
+        var currentUser = null; // {user_id, email}
+
+        try {
+            var saved = localStorage.getItem('spikespeed_user');
+            if (saved) currentUser = JSON.parse(saved);
+        } catch(e) { currentUser = null; }
+
+        /* ===== CALCULATOR STATE ===== */
+        var state = {
+            fps: 60, hitHeight: 3.10, netHeight: 2.43,
+            frameHit: null, frameLand: null,
+            hitX: 4.5, hitY: 7.0,
+            landX: 4.5, landY: 13.0,
+            speed: null, videoLoaded: false, isPlaying: false, markerMode: 'hit'
+        };
+
+        function $(id){ return document.getElementById(id); }
+
+        /* DOM refs — calculator */
+        var dropZone=$('dropZone'),fileInput=$('fileInput'),videoWrapper=$('videoWrapper'),
+            video=$('videoPlayer'),playBtn=$('playBtn'),frameBackBtn=$('frameBackBtn'),
+            frameFwdBtn=$('frameFwdBtn'),timeSlider=$('timeSlider'),timeDisplay=$('timeDisplay'),
+            currentFrameEl=$('currentFrame'),markHitBtn=$('markHitBtn'),markLandBtn=$('markLandBtn'),
+            hitFrameLbl=$('hitFrameLabel'),landFrameLbl=$('landFrameLabel'),
+            courtMap=$('courtMap'),modeHitBtn=$('modeHitBtn'),modeLandBtn=$('modeLandBtn'),
+            hitCoordX=$('hitCoordX'),hitCoordY=$('hitCoordY'),
+            landCoordX=$('landCoordX'),landCoordY=$('landCoordY'),
+            hitHeightIn=$('hitHeight'),netHeightIn=$('netHeight'),
+            fpsSlider=$('fpsSlider'),fpsValueEl=$('fpsValue'),calcBtn=$('calcBtn'),
+            speedValueEl=$('speedValue'),speedSvg=$('speedSvg'),comparisonEl=$('comparison'),
+            calcDetails=$('calcDetails'),detailHit=$('detailHit'),detailLand=$('detailLand'),
+            detailTime=$('detailTime'),detailHoriz=$('detailHoriz'),detailDist=$('detailDist'),
+            detailMs=$('detailMs'),detailFrames=$('detailFrames'),shareBtn=$('shareBtn'),
+            exportCard=$('exportCard'),toastEl=$('toast'),resetBtn=$('resetBtn');
+
+        var hitDot=$('hitDot'),hitRing=$('hitRing'),hitCH=$('hitCH'),hitCV=$('hitCV'),hitLbl=$('hitLbl');
+        var landDot=$('landDot'),landRing=$('landRing'),landCH=$('landCH'),landCV=$('landCV'),landLbl=$('landLbl');
+        var trajLine=$('trajectoryLine');
+
+        /* DOM refs — auth */
+        var authModal=$('authModal'),modalCloseBtn=$('modalCloseBtn'),openAuthBtn=$('openAuthBtn');
+        var tabLogin=$('tabLogin'),tabRegister=$('tabRegister');
+        var formLogin=$('formLogin'),formRegister=$('formRegister');
+        var loginEmail=$('loginEmail'),loginPass=$('loginPass'),loginErr=$('loginErr'),loginSubmitBtn=$('loginSubmitBtn');
+        var regEmail=$('regEmail'),regPass=$('regPass'),regErr=$('regErr'),regSubmitBtn=$('regSubmitBtn');
+        var authGuest=$('authGuest'),authUser=$('authUser'),userEmailDisplay=$('userEmailDisplay'),logoutBtn=$('logoutBtn');
+
+        /* DOM refs — history */
+        var historyGuest=$('historyGuest'),historyLoading=$('historyLoading');
+        var historyEmpty=$('historyEmpty'),historyList=$('historyList');
+
+        /* ===== TOAST ===== */
+        var toastTimer=null;
+        function showToast(m,e){clearTimeout(toastTimer);toastEl.textContent=m;toastEl.className='toast-el'+(e?' err':'');void toastEl.offsetWidth;toastEl.classList.add('visible');toastTimer=setTimeout(function(){toastEl.classList.remove('visible')},3500)}
+
+        /* ===== SPEEDOMETER ===== */
+        function drawSpd(v){
+            var cx=100,cy=105,r=88,mx=140,h='';
+            h+='<path d="'+ac(cx,cy,r,Math.PI,0)+'" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="12" stroke-linecap="round"/>';
+            [[0,60,'#22C55E'],[60,90,'#EAB308'],[90,140,'#EF4444']].forEach(function(z){h+='<path d="'+ac(cx,cy,r,Math.PI*(1-z[0]/mx),Math.PI*(1-z[1]/mx))+'" fill="none" stroke="'+z[2]+'" stroke-width="8" stroke-linecap="round" opacity="0.3"/>';});
+            if(v!==null&&v>0){var c=Math.min(v,mx),a=Math.PI*(1-c/mx),col='#22C55E';if(c>=90)col='#EF4444';else if(c>=60)col='#EAB308';h+='<path d="'+ac(cx,cy,r,Math.PI,a)+'" fill="none" stroke="'+col+'" stroke-width="8" stroke-linecap="round" opacity="0.9"/>';var n=r-18;h+='<line x1="'+cx+'" y1="'+cy+'" x2="'+(cx+n*Math.cos(a))+'" y2="'+(cy-n*Math.sin(a))+'" stroke="'+col+'" stroke-width="2.5" stroke-linecap="round"/>';h+='<circle cx="'+cx+'" cy="'+cy+'" r="5" fill="'+col+'"/><circle cx="'+cx+'" cy="'+cy+'" r="2.5" fill="#0F1D33"/>';}else{h+='<circle cx="'+cx+'" cy="'+cy+'" r="4" fill="rgba(255,255,255,0.15)"/>'}
+            [0,30,60,90,120,140].forEach(function(v2){var ag=Math.PI*(1-v2/mx),mj=v2%30===0,ti=r+(mj?2:4),to=r+(mj?10:7);h+='<line x1="'+(cx+ti*Math.cos(ag))+'" y1="'+(cy-ti*Math.sin(ag))+'" x2="'+(cx+to*Math.cos(ag))+'" y2="'+(cy-to*Math.sin(ag))+'" stroke="rgba(255,255,255,'+(mj?0.3:0.12)+')" stroke-width="'+(mj?1.5:0.8)+'"/>';if(mj){var lr=r+18;h+='<text x="'+(cx+lr*Math.cos(ag))+'" y="'+(cy-lr*Math.sin(ag)+3)+'" fill="rgba(255,255,255,0.3)" font-size="9" text-anchor="middle" font-family="Oswald">'+v2+'</text>';}});
+            speedSvg.innerHTML=h;
+        }
+        function ac(cx,cy,r,a1,a2){var x1=cx+r*Math.cos(a1),y1=cy-r*Math.sin(a1),x2=cx+r*Math.cos(a2),y2=cy-r*Math.sin(a2);return'M '+x1+' '+y1+' A '+r+' '+r+' 0 '+((a1-a2)>Math.PI?1:0)+' 0 '+x2+' '+y2;}
+        drawSpd(null);
+
+        /* ===== MARKERS ===== */
+        function moveHit(ux,uy){
+            var sy=18-uy;
+            hitDot.setAttribute('cx',ux);hitDot.setAttribute('cy',sy);hitRing.setAttribute('cx',ux);hitRing.setAttribute('cy',sy);
+            hitCH.setAttribute('x1',ux-.45);hitCH.setAttribute('x2',ux+.45);hitCH.setAttribute('y1',sy);hitCH.setAttribute('y2',sy);
+            hitCV.setAttribute('x1',ux);hitCV.setAttribute('x2',ux);hitCV.setAttribute('y1',sy-.45);hitCV.setAttribute('y2',sy+.45);
+            hitLbl.setAttribute('x',ux);hitLbl.setAttribute('y',sy-.95);
+            hitCoordX.textContent=ux.toFixed(2);hitCoordY.textContent=uy.toFixed(2);updTraj();
+        }
+        function moveLand(ux,uy){
+            var sy=18-uy;
+            landDot.setAttribute('cx',ux);landDot.setAttribute('cy',sy);landRing.setAttribute('cx',ux);landRing.setAttribute('cy',sy);
+            landCH.setAttribute('x1',ux-.45);landCH.setAttribute('x2',ux+.45);landCH.setAttribute('y1',sy);landCH.setAttribute('y2',sy);
+            landCV.setAttribute('x1',ux);landCV.setAttribute('x2',ux);landCV.setAttribute('y1',sy-.45);landCV.setAttribute('y2',sy+.45);
+            landLbl.setAttribute('x',ux);landLbl.setAttribute('y',sy-.95);
+            landCoordX.textContent=ux.toFixed(2);landCoordY.textContent=uy.toFixed(2);updTraj();
+        }
+        function updTraj(){
+            trajLine.setAttribute('x1',state.hitX);trajLine.setAttribute('y1',18-state.hitY);
+            trajLine.setAttribute('x2',state.landX);trajLine.setAttribute('y2',18-state.landY);
+        }
+
+        /* ===== SET MARKER (shared by 2D click and 3D click) ===== */
+        function setMarkerPoint(ux, uy, mode){
+            ux=Math.max(0,Math.min(9,ux));uy=Math.max(0,Math.min(18,uy));
+            ux=parseFloat(ux.toFixed(2));uy=parseFloat(uy.toFixed(2));
+            if(mode==='hit'){
+                if(uy>9){showToast('Точка удара должна быть на вашей половине (Y 0–9 м)',true);return false;}
+                $('hitMarkerGroup').style.display='';
+                state.hitX=ux;state.hitY=uy;moveHit(ux,uy);
+                showToast('Удар: '+ux.toFixed(1)+' × '+uy.toFixed(1)+' м');
+            }else{
+                if(uy<9){showToast('Точка приземления должна быть на половине соперника (Y 9–18 м)',true);return false;}
+                $('landMarkerGroup').style.display='';
+                state.landX=ux;state.landY=uy;moveLand(ux,uy);
+                showToast('Приземление: '+ux.toFixed(1)+' × '+uy.toFixed(1)+' м');
+            }
+            return true;
+        }
+
+        /* ===== COURT CLICK (2D) ===== */
+        courtMap.addEventListener('click',function(e){
+            var r=courtMap.getBoundingClientRect();
+            var ux=(e.clientX-r.left)/r.width*9;
+            var uy=18-(e.clientY-r.top)/r.height*18;
+            setMarkerPoint(ux, uy, state.markerMode);
+        });
+
+        modeHitBtn.addEventListener('click',function(){state.markerMode='hit';modeHitBtn.className='btn-secondary active flex-1 text-center !text-xs !py-2';modeLandBtn.className='btn-secondary flex-1 text-center !text-xs !py-2';});
+        modeLandBtn.addEventListener('click',function(){state.markerMode='land';modeLandBtn.className='btn-secondary active-red flex-1 text-center !text-xs !py-2';modeHitBtn.className='btn-secondary flex-1 text-center !text-xs !py-2';});
+
+        /* Expose for the 3D module to call back into when the person clicks the 3D court */
+        window.SpikeCalc = {
+            setMarkerPoint: setMarkerPoint,
+            getState: function(){ return state; },
+            getMarkerMode: function(){ return state.markerMode; },
+            getHitHeight: function(){ return parseFloat(hitHeightIn.value)||3.10; }
+        };
+
+        /* ===== VIDEO LOAD ===== */
+        dropZone.addEventListener('click',function(){fileInput.click()});
+        dropZone.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();fileInput.click()}});
+        dropZone.addEventListener('dragover',function(e){e.preventDefault();dropZone.classList.add('dragover')});
+        dropZone.addEventListener('dragleave',function(){dropZone.classList.remove('dragover')});
+        dropZone.addEventListener('drop',function(e){e.preventDefault();dropZone.classList.remove('dragover');var f=e.dataTransfer.files[0];if(f&&f.type.startsWith('video/'))loadVid(f);else showToast('Загрузите видеофайл',true)});
+        fileInput.addEventListener('change',function(e){if(e.target.files[0])loadVid(e.target.files[0])});
+
+        function loadVid(f){
+            resetSt();
+            video.src=URL.createObjectURL(f);video.load();
+            video.addEventListener('loadedmetadata',function h(){
+                video.removeEventListener('loadedmetadata',h);
+                state.videoLoaded=true;
+                dropZone.classList.add('hidden');
+                videoWrapper.classList.remove('hidden');
+                resetBtn.style.display='flex';
+                timeSlider.max=video.duration;
+                markHitBtn.disabled=false;markLandBtn.disabled=false;
+                updFr();showToast('Видео загружено: '+f.name);
+            });
+            video.addEventListener('error',function(){showToast('Не удалось загрузить видео',true)});
+        }
+
+        function resetSt(){
+            state.frameHit=null;state.frameLand=null;state.speed=null;state.isPlaying=false;
+            hitFrameLbl.textContent='Кадр: —';landFrameLbl.textContent='Кадр: —';
+            markHitBtn.classList.remove('active');markLandBtn.classList.remove('active');
+            speedValueEl.textContent='—';speedValueEl.style.color='#F8FAFC';
+            comparisonEl.textContent='Загрузи видео и зафиксируй кадры';comparisonEl.style.color='';
+            calcDetails.classList.add('hidden');shareBtn.disabled=true;drawSpd(null);chkRdy();
+        }
+
+        function resetProject(){
+            video.pause();video.removeAttribute('src');video.load();
+            state.videoLoaded=false;state.isPlaying=false;
+            playBtn.innerHTML='<i class="fas fa-play"></i>';
+            timeDisplay.textContent='00:00.000';timeSlider.value=0;currentFrameEl.textContent='—';
+            videoWrapper.classList.add('hidden');dropZone.classList.remove('hidden');
+            fileInput.value='';resetBtn.style.display='none';
+            $('hitMarkerGroup').style.display='none';$('landMarkerGroup').style.display='none';
+            hitCoordX.textContent='—';hitCoordY.textContent='—';
+            landCoordX.textContent='—';landCoordY.textContent='—';
+            resetSt();showToast('Проект сброшен');
+        }
+        resetBtn.addEventListener('click',resetProject);
+
+        /* ===== PLAYER ===== */
+        function updFr(){if(!state.videoLoaded)return;var t=video.currentTime;currentFrameEl.textContent=Math.floor(t*state.fps);timeSlider.value=t;timeDisplay.textContent=fmtT(t)}
+        function fmtT(s){var m=Math.floor(s/60),r=s%60;return(m<10?'0':'')+m+':'+(r<10?'0':'')+r.toFixed(3)}
+        function togPlay(){if(!state.videoLoaded)return;state.isPlaying?video.pause():video.play()}
+        playBtn.addEventListener('click',togPlay);
+        video.addEventListener('play',function(){state.isPlaying=true;playBtn.innerHTML='<i class="fas fa-pause"></i>'});
+        video.addEventListener('pause',function(){state.isPlaying=false;playBtn.innerHTML='<i class="fas fa-play"></i>';updFr()});
+        video.addEventListener('seeked',updFr);
+        video.addEventListener('timeupdate',function(){if(state.isPlaying){timeSlider.value=video.currentTime;timeDisplay.textContent=fmtT(video.currentTime);currentFrameEl.textContent=Math.floor(video.currentTime*state.fps)}});
+        timeSlider.addEventListener('input',function(){if(state.videoLoaded)video.currentTime=parseFloat(timeSlider.value)});
+        frameBackBtn.addEventListener('click',function(){if(!state.videoLoaded)return;video.pause();video.currentTime=Math.max(0,video.currentTime-1/state.fps)});
+        frameFwdBtn.addEventListener('click',function(){if(!state.videoLoaded)return;video.pause();video.currentTime=Math.min(video.duration,video.currentTime+1/state.fps)});
+        markHitBtn.addEventListener('click',function(){if(!state.videoLoaded)return;video.pause();state.frameHit=Math.floor(video.currentTime*state.fps);hitFrameLbl.textContent='Кадр: '+state.frameHit;markHitBtn.classList.add('active');showToast('Кадр удара: #'+state.frameHit);chkRdy()});
+        markLandBtn.addEventListener('click',function(){if(!state.videoLoaded)return;video.pause();state.frameLand=Math.floor(video.currentTime*state.fps);landFrameLbl.textContent='Кадр: '+state.frameLand;markLandBtn.classList.add('active');showToast('Кадр приземления: #'+state.frameLand);chkRdy()});
+
+        /* ===== HOTKEYS ===== */
+        document.addEventListener('keydown',function(e){
+            if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA')return;
+            switch(e.code){
+                case'Space':e.preventDefault();togPlay();break;
+                case'ArrowLeft':e.preventDefault();if(state.videoLoaded){video.pause();video.currentTime=Math.max(0,video.currentTime-1/state.fps)}break;
+                case'ArrowRight':e.preventDefault();if(state.videoLoaded){video.pause();video.currentTime=Math.min(video.duration,video.currentTime+1/state.fps)}break;
+                case'KeyH':if(state.videoLoaded)markHitBtn.click();break;
+                case'KeyL':if(state.videoLoaded)markLandBtn.click();break;
+            }
+        });
+
+        /* ===== PARAMS ===== */
+        var np=document.querySelectorAll('.net-preset');
+        np.forEach(function(b){b.addEventListener('click',function(){np.forEach(function(x){x.classList.remove('active')});b.classList.add('active');netHeightIn.value=b.getAttribute('data-value');state.netHeight=parseFloat(b.getAttribute('data-value'));if(window.Court3D)window.Court3D.setNetHeight(state.netHeight);})});
+        netHeightIn.addEventListener('change',function(){state.netHeight=parseFloat(netHeightIn.value)||2.43;np.forEach(function(b){b.classList.toggle('active',parseFloat(b.getAttribute('data-value'))===state.netHeight)});if(window.Court3D)window.Court3D.setNetHeight(state.netHeight);});
+        fpsSlider.addEventListener('input',function(){state.fps=parseInt(fpsSlider.value);fpsValueEl.textContent=state.fps;if(state.videoLoaded)updFr()});
+        hitHeightIn.addEventListener('change',function(){state.hitHeight=parseFloat(hitHeightIn.value)||3.10});
+        function chkRdy(){calcBtn.disabled=!(state.videoLoaded&&state.frameHit!==null&&state.frameLand!==null)}
+
+        /* ===== CALC SPEED ===== */
+        calcBtn.addEventListener('click',calcSpeed);
+        function calcSpeed(){
+            state.hitHeight=parseFloat(hitHeightIn.value)||3.10;state.netHeight=parseFloat(netHeightIn.value)||2.43;state.fps=parseInt(fpsSlider.value)||60;
+            if(state.frameHit===null||state.frameLand===null){showToast('Сначала зафиксируй кадры удара и приземления!',true);return}
+            var t=(state.frameLand-state.frameHit)/state.fps;
+            if(t<=0){showToast('Кадр приземления должен быть позже кадра удара!',true);return}
+            var x1=state.hitX, y1=state.hitY, z1=state.hitHeight;
+            var x2=state.landX, y2=state.landY, z2=0;
+            var dx=x2-x1, dy=y2-y1, dH=Math.sqrt(dx*dx+dy*dy);
+            var dz=z1-z2, S=Math.sqrt(dH*dH+dz*dz);
+            var vMs=S/t, vKmh=Math.round(vMs*3.6); state.speed=vKmh;
+
+            speedValueEl.textContent=vKmh;
+            speedValueEl.style.color=vKmh<60?'#22C55E':vKmh<90?'#EAB308':'#EF4444';
+            drawSpd(vKmh);
+
+            var ct='',cc='';
+            if(vKmh<60){ct='Твой удар неплох для новичка! Поработай над хлесткостью кисти.';cc='#22C55E'}
+            else if(vKmh<=85){ct='Отличный любительский уровень! Ты бьёшь быстрее, чем 60% игроков.';cc='#EAB308'}
+            else if(vKmh<=110){ct='Мощно! Это уровень полупрофессионалов и сильных любительских лиг.';cc='#FB923C'}
+            else{ct='Пушка! Леон и Михайлов нервно курят в сторонке.';cc='#EF4444'}
+            comparisonEl.textContent=ct;comparisonEl.style.color=cc;
+
+            calcDetails.classList.remove('hidden');
+            detailHit.textContent=state.hitX.toFixed(1)+' × '+state.hitY.toFixed(1)+' м';
+            detailLand.textContent=state.landX.toFixed(1)+' × '+state.landY.toFixed(1)+' м';
+            detailTime.textContent=t.toFixed(3)+' с'; detailHoriz.textContent=dH.toFixed(2)+' м';
+            detailDist.textContent=S.toFixed(2)+' м'; detailMs.textContent=vMs.toFixed(1)+' м/с';
+            detailFrames.textContent=state.frameHit+' → '+state.frameLand+' ('+(state.frameLand-state.frameHit)+' кадр.)';
+
+            shareBtn.disabled=false;showToast('Скорость рассчитана: '+vKmh+' км/ч');
+
+            // Update 3D scene with this hit's trajectory
+            if(window.Court3D) window.Court3D.setShot(state.hitX,state.hitY,state.hitHeight,state.landX,state.landY,t);
+
+            // Autosave if logged in
+            if(currentUser){
+                saveToHistory(vKmh, state.hitHeight);
+            }
+        }
+
+        /* ===== EXPORT ===== */
+        shareBtn.addEventListener('click',function(){
+            if(state.speed===null)return;
+            var ac2='#22C55E';if(state.speed>=90)ac2='#EF4444';else if(state.speed>=60)ac2='#EAB308';
+            exportCard.innerHTML='<div style="font-family:Oswald,sans-serif;padding:8px 0 0 0"><div style="display:flex;align-items:center;gap:10px;margin-bottom:24px"><div style="width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#F97316,#C2410C);display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px">&#9917;</div><div><div style="font-size:18px;font-weight:700;color:#fff;letter-spacing:3px">SPIKESPEED</div><div style="font-size:10px;color:#64748B;font-family:Source Sans 3,sans-serif">Анализатор скорости удара</div></div></div><div style="text-align:center;margin-bottom:20px"><div style="font-size:72px;font-weight:700;color:'+ac2+';line-height:1">'+state.speed+'</div><div style="font-size:14px;color:#64748B;letter-spacing:4px;text-transform:uppercase">км/ч</div></div><div style="background:rgba(0,0,0,0.25);border-radius:12px;padding:14px;margin-bottom:14px"><div style="display:flex;justify-content:space-between;font-size:12px;color:#F97316;font-family:Source Sans 3,sans-serif;margin-bottom:6px"><span>Удар из</span><span style="color:#E2E8F0;font-family:monospace">'+state.hitX.toFixed(1)+' × '+state.hitY.toFixed(1)+' м</span></div><div style="display:flex;justify-content:space-between;font-size:12px;color:#EF4444;font-family:Source Sans 3,sans-serif;margin-bottom:6px"><span>Приземление</span><span style="color:#E2E8F0;font-family:monospace">'+state.landX.toFixed(1)+' × '+state.landY.toFixed(1)+' м</span></div><div style="display:flex;justify-content:space-between;font-size:12px;color:#94A3B8;font-family:Source Sans 3,sans-serif;margin-bottom:6px"><span>Время полёта</span><span style="color:#E2E8F0;font-family:monospace">'+detailTime.textContent+'</span></div><div style="display:flex;justify-content:space-between;font-size:12px;color:#94A3B8;font-family:Source Sans 3,sans-serif;margin-bottom:6px"><span>Расстояние 3D</span><span style="color:#E2E8F0;font-family:monospace">'+detailDist.textContent+'</span></div><div style="display:flex;justify-content:space-between;font-size:12px;color:#94A3B8;font-family:Source Sans 3,sans-serif"><span>Скорость</span><span style="color:#E2E8F0;font-family:monospace">'+detailMs.textContent+'</span></div></div><div style="text-align:center;font-size:13px;color:'+ac2+';font-family:Source Sans 3,sans-serif;line-height:1.5;padding:0 4px">'+comparisonEl.textContent+'</div></div>';
+            html2canvas(exportCard,{backgroundColor:'#0F1D33',scale:2,useCORS:true,logging:false}).then(function(c){var a=document.createElement('a');a.download='spikespeed_'+state.speed+'kmh.png';a.href=c.toDataURL('image/png');a.click();showToast('Карточка сохранена!')}).catch(function(e){console.error(e);showToast('Ошибка экспорта',true)});
+        });
+
+        /* ===== AUTH MODAL ===== */
+        function openModal(){
+            authModal.classList.add('open');
+            loginEmail.value='';loginPass.value='';loginErr.textContent='';
+            regEmail.value='';regPass.value='';regErr.textContent='';
+            switchTab('login');
+        }
+        function closeModal(){authModal.classList.remove('open')}
+
+        function switchTab(t){
+            if(t==='login'){
+                tabLogin.classList.add('active');tabRegister.classList.remove('active');
+                formLogin.classList.add('active');formRegister.classList.remove('active');
+            }else{
+                tabRegister.classList.add('active');tabLogin.classList.remove('active');
+                formRegister.classList.add('active');formLogin.classList.remove('active');
+            }
+        }
+
+        openAuthBtn.addEventListener('click', openModal);
+        modalCloseBtn.addEventListener('click', closeModal);
+        authModal.addEventListener('click', function(e){ if(e.target===authModal) closeModal(); });
+        tabLogin.addEventListener('click', function(){ switchTab('login'); });
+        tabRegister.addEventListener('click', function(){ switchTab('register'); });
+
+        loginSubmitBtn.addEventListener('click', function(){
+            var email=loginEmail.value.trim(), pass=loginPass.value;
+            if(!email||!pass){loginErr.textContent='Заполните все поля';return;}
+            loginSubmitBtn.disabled=true;loginErr.textContent='';
+            fetch(API+'/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email,password:pass})})
+            .then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d}})})
+            .then(function(res){
+                if(res.ok){
+                    setUser({user_id:res.d.user_id,email:res.d.email});
+                    closeModal();showToast('Добро пожаловать, '+res.d.email+'!');
+                }else{loginErr.textContent=res.d.detail||'Ошибка входа';}
+            })
+            .catch(function(){loginErr.textContent='Сервер недоступен. Запустите server.py';})
+            .finally(function(){loginSubmitBtn.disabled=false;});
+        });
+
+        regSubmitBtn.addEventListener('click', function(){
+            var email=regEmail.value.trim(), pass=regPass.value;
+            if(!email||!pass){regErr.textContent='Заполните все поля';return;}
+            if(pass.length<6){regErr.textContent='Пароль должен быть не менее 6 символов';return;}
+            regSubmitBtn.disabled=true;regErr.textContent='';
+            fetch(API+'/api/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email,password:pass})})
+            .then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d}})})
+            .then(function(res){
+                if(res.ok){
+                    setUser({user_id:res.d.user_id,email:res.d.email});
+                    closeModal();showToast('Аккаунт создан! Привет, '+res.d.email+'!');
+                }else{regErr.textContent=res.d.detail||'Ошибка регистрации';}
+            })
+            .catch(function(){regErr.textContent='Сервер недоступен. Запустите server.py';})
+            .finally(function(){regSubmitBtn.disabled=false;});
+        });
+
+        logoutBtn.addEventListener('click', function(){
+            currentUser=null;
+            try{localStorage.removeItem('spikespeed_user');}catch(e){}
+            authGuest.style.display='flex';authUser.style.display='none';
+            renderHistoryGuest();
+            showToast('Вы вышли из аккаунта');
+        });
+
+        function setUser(u){
+            currentUser=u;
+            try{localStorage.setItem('spikespeed_user',JSON.stringify(u));}catch(e){}
+            authGuest.style.display='none';
+            authUser.style.display='flex';
+            userEmailDisplay.textContent=u.email;
+            loadHistory();
+        }
+
+        /* ===== HISTORY ===== */
+        function renderHistoryGuest(){
+            historyGuest.classList.remove('hidden');
+            historyLoading.classList.add('hidden');
+            historyEmpty.classList.add('hidden');
+            historyList.classList.add('hidden');
+        }
+
+        function loadHistory(){
+            if(!currentUser){renderHistoryGuest();return;}
+            historyGuest.classList.add('hidden');
+            historyLoading.classList.remove('hidden');
+            historyEmpty.classList.add('hidden');
+            historyList.classList.add('hidden');
+
+            fetch(API+'/api/history/'+currentUser.user_id)
+            .then(function(r){return r.json()})
+            .then(function(data){
+                historyLoading.classList.add('hidden');
+                var items=data.history||[];
+                if(items.length===0){
+                    historyEmpty.classList.remove('hidden');
+                }else{
+                    renderHistoryItems(items);
+                }
+            })
+            .catch(function(){
+                historyLoading.classList.add('hidden');
+                historyEmpty.classList.remove('hidden');
+                showToast('Не удалось загрузить историю',true);
+            });
+        }
+
+        function renderHistoryItems(items){
+            historyList.classList.remove('hidden');
+            historyList.innerHTML='';
+            items.forEach(function(item){
+                var col=item.speed<60?'#22C55E':item.speed<90?'#EAB308':'#EF4444';
+                var el=document.createElement('div');
+                el.className='history-item';
+                el.innerHTML=
+                    '<div class="flex justify-between items-center">'
+                    +'<span class="text-[10px] text-slate-600 font-mono">'+item.date+'</span>'
+                    +'<span class="font-display font-bold text-sm" style="color:'+col+'">'+item.speed+' км/ч</span>'
+                    +'</div>'
+                    +'<div class="text-[11px] text-slate-600 mt-0.5">Съём: '+item.reach_height.toFixed(2)+' м &nbsp;·&nbsp; '
+                    +'Удар: '+item.hit_coords.x.toFixed(1)+'×'+item.hit_coords.y.toFixed(1)
+                    +' → '+item.land_coords.x.toFixed(1)+'×'+item.land_coords.y.toFixed(1)+'</div>';
+                el.addEventListener('click', function(){
+                    loadFromHistory(item);
+                });
+                historyList.appendChild(el);
+            });
+        }
+
+        function loadFromHistory(item){
+            var hx=item.hit_coords.x, hy=item.hit_coords.y;
+            var lx=item.land_coords.x, ly=item.land_coords.y;
+            state.hitX=hx;state.hitY=hy;
+            state.landX=lx;state.landY=ly;
+            $('hitMarkerGroup').style.display='';
+            $('landMarkerGroup').style.display='';
+            moveHit(hx,hy);
+            moveLand(lx,ly);
+            if(window.Court3D){
+                var dxh=lx-hx, dyh=ly-hy, dHh=Math.sqrt(dxh*dxh+dyh*dyh);
+                var dzh=item.reach_height-0, Sh=Math.sqrt(dHh*dHh+dzh*dzh);
+                var vMsApprox=item.speed/3.6;
+                var tApprox=vMsApprox>0?Sh/vMsApprox:1.2;
+                window.Court3D.setShot(hx,hy,item.reach_height,lx,ly,tApprox);
+            }
+            showToast('Удар от '+item.date+' загружен на карту');
+        }
+
+        function saveToHistory(speed, reachHeight){
+            fetch(API+'/api/history',{
+                method:'POST',
+                headers:{'Content-Type':'application/json'},
+                body:JSON.stringify({
+                    user_id:currentUser.user_id,
+                    speed:speed,
+                    reach_height:reachHeight,
+                    hit_coords:JSON.stringify({x:state.hitX,y:state.hitY}),
+                    land_coords:JSON.stringify({x:state.landX,y:state.landY})
+                })
+            })
+            .then(function(r){return r.json()})
+            .then(function(){loadHistory();})
+            .catch(function(){showToast('История не сохранена (сервер недоступен)',true);});
+        }
+
+        /* ===== INIT AUTH STATE ===== */
+        if(currentUser){
+            authGuest.style.display='none';
+            authUser.style.display='flex';
+            userEmailDisplay.textContent=currentUser.email;
+            loadHistory();
+        } else {
+            renderHistoryGuest();
+        }
+
+        /* ===== 2D / 3D VIEW TOGGLE ===== */
+        var view2dBtn=$('view2dBtn'),view3dBtn=$('view3dBtn'),
+            view2dContainer=$('view2dContainer'),view3dContainer=$('view3dContainer'),
+            replay3dBtn=$('replay3dBtn');
+
+        view2dBtn.addEventListener('click', function(){
+            view2dBtn.classList.add('active');view3dBtn.classList.remove('active');
+            view2dContainer.classList.remove('hidden');view3dContainer.classList.add('hidden');
+        });
+        view3dBtn.addEventListener('click', function(){
+            view3dBtn.classList.add('active');view2dBtn.classList.remove('active');
+            view3dContainer.classList.remove('hidden');view2dContainer.classList.add('hidden');
+            if(window.Court3D){
+                window.Court3D.onShow();
+                window.Court3D.setNetHeight(state.netHeight);
+                // Only sync a shot into the 3D scene if the person has actually placed both points —
+                // otherwise leave the court empty instead of showing the default-position ball.
+                var hitPlaced = document.getElementById('hitMarkerGroup').style.display !== 'none';
+                var landPlaced = document.getElementById('landMarkerGroup').style.display !== 'none';
+                if(hitPlaced && landPlaced){
+                    window.Court3D.setShot(state.hitX,state.hitY,state.hitHeight,state.landX,state.landY,1.0,true);
+                }
+            }
+        });
+        replay3dBtn.addEventListener('click', function(){
+            if(window.Court3D) window.Court3D.replay();
+        });
+
+    })();
+    </script>
+
+    <!-- ===== 3D COURT MODULE (Three.js) ===== -->
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        (function(){
+            'use strict';
+
+            var wrap = document.getElementById('court3dWrap');
+            var loadingEl = document.getElementById('court3dLoading');
+            var replayBtn = document.getElementById('replay3dBtn');
+
+            var scene, camera, renderer, controls, courtModel;
+            var initialized = false, modelLoaded = false;
+            var clock = new THREE.Clock();
+            var clickPlane, hitRing3D, landRing3D, flyingBall, landDot3D;
+            var netParts = [], currentNetHeight = 2.43;
+            var raycaster = new THREE.Raycaster();
+            var pointer = new THREE.Vector2();
+
+            // Current shot data (model-space coords)
+            var shot = null; // {start:{x,y,z}, end:{x,y,z}, duration}
+            var animPlaying = false, animElapsed = 0;
+
+            // Map SVG court coords (X:0-9 width, Y:0-18 length, ground=0) -> model space
+            // Model: length(18m) along X (-9..9), width(9m) along Z (-4.5..4.5), height = Y
+            function toModelSpace(svgX, svgY, height){
+                return {
+                    x: svgY - 9,      // length axis, centered
+                    z: svgX - 4.5,    // width axis, centered
+                    y: height
+                };
+            }
+
+            // Inverse of toModelSpace -- model floor point -> SVG court coords (X:0-9, Y:0-18)
+            function toSvgSpace(modelX, modelZ){
+                return {
+                    x: modelZ + 4.5,
+                    y: modelX + 9
+                };
+            }
+
+            function makeFloorRing(color){
+                var ringGeo = new THREE.RingGeometry(0.38, 0.5, 32);
+                var ringMat = new THREE.MeshBasicMaterial({color:color, transparent:true, opacity:0.85, side:THREE.DoubleSide, depthWrite:false});
+                var ring = new THREE.Mesh(ringGeo, ringMat);
+                ring.rotation.x = -Math.PI/2;
+                ring.renderOrder = 2;
+                return ring;
+            }
+
+            function makeDot(color){
+                var dotGeo = new THREE.SphereGeometry(0.105, 20, 20); // real volleyball radius (21cm diameter)
+                var dotMat = new THREE.MeshStandardMaterial({color:color, emissive:color, emissiveIntensity:0.4, roughness:0.4});
+                var dot = new THREE.Mesh(dotGeo, dotMat);
+                dot.renderOrder = 3;
+                return dot;
+            }
+
+            function setupClickHandling(){
+                var dom = renderer.domElement;
+                var downX=0, downY=0, dragged=false;
+
+                dom.addEventListener('pointerdown', function(e){
+                    downX=e.clientX; downY=e.clientY; dragged=false;
+                });
+                dom.addEventListener('pointermove', function(e){
+                    if(Math.abs(e.clientX-downX)>4 || Math.abs(e.clientY-downY)>4) dragged=true;
+                });
+                dom.addEventListener('pointerup', function(e){
+                    if(dragged) return; // was a camera-orbit drag, not a tap
+                    handleCourtClick(e);
+                });
+            }
+
+            function handleCourtClick(e){
+                if(!modelLoaded) return;
+                var rect = renderer.domElement.getBoundingClientRect();
+                pointer.x = ((e.clientX-rect.left)/rect.width)*2-1;
+                pointer.y = -((e.clientY-rect.top)/rect.height)*2+1;
+                raycaster.setFromCamera(pointer, camera);
+                var hits = raycaster.intersectObject(clickPlane);
+                if(hits.length===0) return;
+                var p = hits[0].point;
+                var svg = toSvgSpace(p.x, p.z);
+
+                if(!window.SpikeCalc) return;
+                var mode = window.SpikeCalc.getMarkerMode();
+                var ok = window.SpikeCalc.setMarkerPoint(svg.x, svg.y, mode);
+                if(ok===false) return;
+
+                // Mirror the placed point onto the 3D scene immediately for visual feedback
+                var st = window.SpikeCalc.getState();
+                var hh = window.SpikeCalc.getHitHeight();
+
+                if(mode==='hit'){
+                    var mp = toModelSpace(st.hitX, st.hitY, hh);
+                    hitRing3D.position.set(mp.x, 0.01, mp.z);
+                    hitRing3D.visible = true;
+                    // Show the orange ball right at the hit point immediately, at the entered hit height
+                    flyingBall.position.set(mp.x, hh, mp.z);
+                    flyingBall.visible = true;
+                }else{
+                    var mp2 = toModelSpace(st.landX, st.landY, 0);
+                    landRing3D.position.set(mp2.x, 0.01, mp2.z);
+                    landRing3D.visible = true;
+                    landDot3D.position.set(mp2.x, 0.16, mp2.z);
+                    landDot3D.visible = true;
+                }
+
+                // If both points now exist, build the full shot so the trajectory line is drawn
+                // and the replay button works right away -- without waiting for calcSpeed().
+                var hitPlaced = document.getElementById('hitMarkerGroup').style.display !== 'none';
+                var landPlaced = document.getElementById('landMarkerGroup').style.display !== 'none';
+                if(hitPlaced && landPlaced){
+                    setShot(st.hitX, st.hitY, hh, st.landX, st.landY, 1.0, true);
+                }
+            }
+
+            function init(){
+                if(initialized) return;
+                initialized = true;
+
+                scene = new THREE.Scene();
+
+                var w = wrap.clientWidth || 400, h = wrap.clientHeight || 312;
+                camera = new THREE.PerspectiveCamera(42, w/h, 0.1, 100);
+                camera.position.set(13, 9, 13);
+                camera.lookAt(0,1,0);
+
+                renderer = new THREE.WebGLRenderer({antialias:true, alpha:true});
+                renderer.setSize(w,h);
+                renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+                renderer.outputColorSpace = THREE.SRGBColorSpace;
+                wrap.appendChild(renderer.domElement);
+
+                controls = new OrbitControls(camera, renderer.domElement);
+                controls.target.set(0,1.2,0);
+                controls.enableDamping = true;
+                controls.dampingFactor = 0.08;
+                controls.minDistance = 6;
+                controls.maxDistance = 28;
+                controls.maxPolarAngle = Math.PI*0.49;
+                controls.update();
+
+                // Lighting -- matches the site's warm-orange / navy palette
+                var hemi = new THREE.HemisphereLight(0x9fb8d9, 0x0a1628, 0.9);
+                scene.add(hemi);
+                var key = new THREE.DirectionalLight(0xfff2e0, 1.7);
+                key.position.set(8,14,6);
+                key.castShadow = false;
+                scene.add(key);
+                var fill = new THREE.DirectionalLight(0xF97316, 0.35);
+                fill.position.set(-10,4,-8);
+                scene.add(fill);
+
+                // Subtle ground glow plane beneath the court (matches dark navy bg)
+                var glowGeo = new THREE.CircleGeometry(13, 48);
+                var glowMat = new THREE.MeshBasicMaterial({color:0x0d1b30, transparent:true, opacity:0.6});
+                var glow = new THREE.Mesh(glowGeo, glowMat);
+                glow.rotation.x = -Math.PI/2;
+                glow.position.y = -0.02;
+                scene.add(glow);
+
+                // Trajectory line (updated per-shot)
+                var lineGeo = new THREE.BufferGeometry();
+                var lineMat = new THREE.LineDashedMaterial({color:0xFFFFFF, dashSize:0.22, gapSize:0.14, transparent:true, opacity:0.75, linewidth:1});
+                window._trajLine3D = new THREE.Line(lineGeo, lineMat);
+                window._trajLine3D.visible = false;
+                scene.add(window._trajLine3D);
+
+                // Invisible click-plane covering the full court footprint, used for raycasting clicks
+                var clickPlaneGeo = new THREE.PlaneGeometry(18.6, 9.6);
+                var clickPlaneMat = new THREE.MeshBasicMaterial({visible:false});
+                clickPlane = new THREE.Mesh(clickPlaneGeo, clickPlaneMat);
+                clickPlane.rotation.x = -Math.PI/2;
+                clickPlane.position.y = 0;
+                scene.add(clickPlane);
+
+                // Floor rings mark where the hit and landing points are on the ground
+                hitRing3D = makeFloorRing(0xF97316);
+                landRing3D = makeFloorRing(0xEF4444);
+                hitRing3D.visible = false;
+                landRing3D.visible = false;
+                scene.add(hitRing3D);
+                scene.add(landRing3D);
+
+                // The flying ball IS the hit-point marker -- it starts at the hit point (in the air,
+                // at hit height) and travels along the trajectory to the landing point, where it stays.
+                flyingBall = makeDot(0xF97316);
+                flyingBall.visible = false;
+                scene.add(flyingBall);
+
+                // Static landing-point dot, visible as soon as the point is placed (independent of the ball's flight)
+                landDot3D = makeDot(0xEF4444);
+                landDot3D.visible = false;
+                scene.add(landDot3D);
+
+                setupClickHandling();
+
+                loadModel();
+                animate();
+                window.addEventListener('resize', onResize);
+                new ResizeObserver(onResize).observe(wrap);
+            }
+
+            function loadModel(){
+                var loader = new GLTFLoader();
+                loader.load('assets/court.glb', function(gltf){
+                    courtModel = gltf.scene;
+                    // Remove the embedded ball mesh/node if present -- we animate our own
+                    var toRemove = [];
+                    netParts = [];
+                    courtModel.traverse(function(child){
+                        var nm = (child.name||'').toLowerCase();
+                        if(nm.indexOf('volleyball')!==-1 || nm.indexOf('sphere')!==-1){
+                            toRemove.push(child);
+                        }
+                        // Collect the net + its top/bottom bands (NOT the posts -- the posts are fixed
+                        // poles that stay planted in the floor; only the net fabric moves up/down).
+                        if(nm.indexOf('net')!==-1 || nm.indexOf('band')!==-1){
+                            netParts.push({ obj: child, baseY: child.position.y });
+                        }
+                    });
+                    toRemove.forEach(function(o){ if(o.parent) o.parent.remove(o); });
+
+                    scene.add(courtModel);
+                    modelLoaded = true;
+                    loadingEl.classList.add('hidden-3d');
+                    applyNetHeight(currentNetHeight);
+                }, undefined, function(err){
+                    console.error('GLTF load error:', err);
+                    loadingEl.innerHTML = '<i class="fas fa-triangle-exclamation" style="font-size:18px;color:#EF4444"></i><span>Не удалось загрузить 3D-модель</span>';
+                });
+            }
+
+            // The model's net parts (band/net mesh Y positions) are authored for a 2.43m net.
+            // Shifting them down by the difference moves the whole net assembly to match a lower net height.
+            var NET_HEIGHT_DEFAULT = 2.43;
+            function applyNetHeight(height){
+                currentNetHeight = height;
+                if(!netParts || !netParts.length) return;
+                var offset = height - NET_HEIGHT_DEFAULT;
+                netParts.forEach(function(p){
+                    p.obj.position.y = p.baseY + offset;
+                });
+            }
+
+            function onResize(){
+                if(!renderer || !wrap) return;
+                var w = wrap.clientWidth || 400, h = wrap.clientHeight || 312;
+                if(w<10||h<10) return;
+                camera.aspect = w/h;
+                camera.updateProjectionMatrix();
+                renderer.setSize(w,h);
+            }
+
+            function updateTrajectoryLine(){
+                if(!shot) return;
+                var pts = [];
+                var N = 40;
+                for(var i=0;i<=N;i++){
+                    var t = i/N;
+                    pts.push(parabolaPoint(t));
+                }
+                var positions = new Float32Array(pts.length*3);
+                pts.forEach(function(p,i){
+                    positions[i*3]=p.x; positions[i*3+1]=p.y; positions[i*3+2]=p.z;
+                });
+                window._trajLine3D.geometry.setAttribute('position', new THREE.BufferAttribute(positions,3));
+                window._trajLine3D.computeLineDistances();
+                window._trajLine3D.visible = true;
+            }
+
+            // Straight-line flight path between shot.start and shot.end (no arc) -- matches a real spike trajectory line
+            function parabolaPoint(t){
+                var s = shot.start, e = shot.end;
+                var x = s.x + (e.x - s.x)*t;
+                var z = s.z + (e.z - s.z)*t;
+                var y = s.y + (e.y - s.y)*t;
+                return { x:x, y:y, z:z };
+            }
+
+            function setShot(svgHitX, svgHitY, hitHeight, svgLandX, svgLandY, duration, skipAnim){
+                init();
+                var s = toModelSpace(svgHitX, svgHitY, hitHeight);
+                var e = toModelSpace(svgLandX, svgLandY, 0);
+                shot = { start:s, end:e, duration: Math.max(0.4, Math.min(duration||1, 3)) };
+                updateTrajectoryLine();
+                replayBtn.disabled = false;
+
+                // Floor rings mark both ends of the shot
+                hitRing3D.position.set(s.x, 0.01, s.z);
+                hitRing3D.visible = true;
+                landRing3D.position.set(e.x, 0.01, e.z);
+                landRing3D.visible = true;
+                landDot3D.position.set(e.x, 0.16, e.z);
+                landDot3D.visible = true;
+
+                flyingBall.visible = true;
+                if(!skipAnim){
+                    flyingBall.position.set(s.x, s.y, s.z);
+                    animElapsed = 0; animPlaying = true;
+                } else {
+                    // Stay resting at the hit point until the person explicitly plays the animation
+                    flyingBall.position.set(s.x, s.y, s.z);
+                }
+            }
+
+            function replay(){
+                if(!shot) return;
+                // Snap the ball back to the hit point so it visibly flies the path again
+                flyingBall.position.set(shot.start.x, shot.start.y, shot.start.z);
+                animElapsed = 0; animPlaying = true;
+            }
+
+            function onShow(){
+                init();
+                onResize();
+            }
+
+            function animate(){
+                requestAnimationFrame(animate);
+                var dt = clock.getDelta();
+                if(controls) controls.update();
+
+                if(animPlaying && shot){
+                    animElapsed += dt;
+                    var t = animElapsed / shot.duration;
+                    if(t>=1){ t=1; animPlaying=false; }
+                    var p = parabolaPoint(t);
+                    flyingBall.position.set(p.x,p.y,p.z);
+                    // gentle spin while flying
+                    flyingBall.rotation.x += dt*6;
+                    flyingBall.rotation.z += dt*3;
+                }
+
+                if(renderer) renderer.render(scene, camera);
+            }
+
+            window.Court3D = {
+                setShot: setShot,
+                replay: replay,
+                onShow: onShow,
+                setNetHeight: applyNetHeight
+            };
+        })();
+    </script>
+</body>
+</html>
