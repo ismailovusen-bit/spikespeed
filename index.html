@@ -573,6 +573,18 @@
                     <div class="flex justify-between text-slate-500"><span>Скорость</span><span id="detailMs" class="text-slate-300 font-mono">—</span></div>
                     <div class="flex justify-between text-slate-500"><span>Кадры (удар → приземл.)</span><span id="detailFrames" class="text-slate-300 font-mono">—</span></div>
                 </div>
+
+                <button id="aiAdviceBtn" class="btn-secondary text-center !py-3 mb-3 w-full" disabled>
+                    <i class="fas fa-wand-magic-sparkles mr-1.5 text-vball-400"></i>
+                    <span class="text-[13px]">Получить совет от ИИ-тренера</span>
+                </button>
+                <div id="aiAdviceBox" class="hidden mb-4 p-3.5 rounded-xl bg-gradient-to-br from-vball-500/10 to-navy-950/60 border border-vball-500/20 text-[13px] leading-relaxed text-slate-300">
+                    <div class="flex items-center gap-2 mb-2 text-[11px] text-vball-400 font-semibold uppercase tracking-wider">
+                        <i class="fas fa-robot"></i> Совет ИИ-тренера
+                    </div>
+                    <div id="aiAdviceText">—</div>
+                </div>
+
                 <button id="shareBtn" class="btn-primary mt-auto" disabled>
                     <i class="fas fa-download mr-2"></i>Скачать карточку результата
                 </button>
@@ -646,7 +658,10 @@
             calcDetails=$('calcDetails'),detailHit=$('detailHit'),detailLand=$('detailLand'),
             detailTime=$('detailTime'),detailHoriz=$('detailHoriz'),detailDist=$('detailDist'),
             detailMs=$('detailMs'),detailFrames=$('detailFrames'),shareBtn=$('shareBtn'),
-            exportCard=$('exportCard'),toastEl=$('toast'),resetBtn=$('resetBtn');
+            exportCard=$('exportCard'),toastEl=$('toast'),resetBtn=$('resetBtn'),
+            aiAdviceBtn=$('aiAdviceBtn'),aiAdviceBox=$('aiAdviceBox'),aiAdviceText=$('aiAdviceText');
+
+        var lastShotData = null;
 
         var hitDot=$('hitDot'),hitRing=$('hitRing'),hitCH=$('hitCH'),hitCV=$('hitCV'),hitLbl=$('hitLbl');
         var landDot=$('landDot'),landRing=$('landRing'),landCH=$('landCH'),landCV=$('landCV'),landLbl=$('landLbl');
@@ -854,6 +869,12 @@
 
             shareBtn.disabled=false;showToast('Скорость рассчитана: '+vKmh+' км/ч');
 
+            // Reset and enable the AI advice button for this new shot
+            aiAdviceBtn.disabled=false;
+            aiAdviceBox.classList.add('hidden');
+            aiAdviceBtn.innerHTML='<i class="fas fa-wand-magic-sparkles mr-1.5 text-vball-400"></i><span class="text-[13px]">Получить совет от ИИ-тренера</span>';
+            lastShotData = { speed: vKmh, reach_height: state.hitHeight, net_height: state.netHeight, flight_time: t, horizontal_distance: dH, hit_x: state.hitX, hit_y: state.hitY, land_x: state.landX, land_y: state.landY };
+
             // Update 3D scene with this hit's trajectory
             if(window.Court3D) window.Court3D.setShot(state.hitX,state.hitY,state.hitHeight,state.landX,state.landY,t);
 
@@ -869,6 +890,37 @@
             var ac2='#22C55E';if(state.speed>=90)ac2='#EF4444';else if(state.speed>=60)ac2='#EAB308';
             exportCard.innerHTML='<div style="font-family:Oswald,sans-serif;padding:8px 0 0 0"><div style="display:flex;align-items:center;gap:10px;margin-bottom:24px"><div style="width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#F97316,#C2410C);display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px">&#9917;</div><div><div style="font-size:18px;font-weight:700;color:#fff;letter-spacing:3px">SPIKESPEED</div><div style="font-size:10px;color:#64748B;font-family:Source Sans 3,sans-serif">Анализатор скорости удара</div></div></div><div style="text-align:center;margin-bottom:20px"><div style="font-size:72px;font-weight:700;color:'+ac2+';line-height:1">'+state.speed+'</div><div style="font-size:14px;color:#64748B;letter-spacing:4px;text-transform:uppercase">км/ч</div></div><div style="background:rgba(0,0,0,0.25);border-radius:12px;padding:14px;margin-bottom:14px"><div style="display:flex;justify-content:space-between;font-size:12px;color:#F97316;font-family:Source Sans 3,sans-serif;margin-bottom:6px"><span>Удар из</span><span style="color:#E2E8F0;font-family:monospace">'+state.hitX.toFixed(1)+' × '+state.hitY.toFixed(1)+' м</span></div><div style="display:flex;justify-content:space-between;font-size:12px;color:#EF4444;font-family:Source Sans 3,sans-serif;margin-bottom:6px"><span>Приземление</span><span style="color:#E2E8F0;font-family:monospace">'+state.landX.toFixed(1)+' × '+state.landY.toFixed(1)+' м</span></div><div style="display:flex;justify-content:space-between;font-size:12px;color:#94A3B8;font-family:Source Sans 3,sans-serif;margin-bottom:6px"><span>Время полёта</span><span style="color:#E2E8F0;font-family:monospace">'+detailTime.textContent+'</span></div><div style="display:flex;justify-content:space-between;font-size:12px;color:#94A3B8;font-family:Source Sans 3,sans-serif;margin-bottom:6px"><span>Расстояние 3D</span><span style="color:#E2E8F0;font-family:monospace">'+detailDist.textContent+'</span></div><div style="display:flex;justify-content:space-between;font-size:12px;color:#94A3B8;font-family:Source Sans 3,sans-serif"><span>Скорость</span><span style="color:#E2E8F0;font-family:monospace">'+detailMs.textContent+'</span></div></div><div style="text-align:center;font-size:13px;color:'+ac2+';font-family:Source Sans 3,sans-serif;line-height:1.5;padding:0 4px">'+comparisonEl.textContent+'</div></div>';
             html2canvas(exportCard,{backgroundColor:'#0F1D33',scale:2,useCORS:true,logging:false}).then(function(c){var a=document.createElement('a');a.download='spikespeed_'+state.speed+'kmh.png';a.href=c.toDataURL('image/png');a.click();showToast('Карточка сохранена!')}).catch(function(e){console.error(e);showToast('Ошибка экспорта',true)});
+        });
+
+        /* ===== AI COACH ADVICE ===== */
+        aiAdviceBtn.addEventListener('click', function(){
+            if(!lastShotData) return;
+            aiAdviceBtn.disabled = true;
+            aiAdviceBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1.5 text-vball-400"></i><span class="text-[13px]">ИИ анализирует удар…</span>';
+
+            fetch(API+'/api/analyze', {
+                method: 'POST',
+                headers: {'Content-Type':'application/json'},
+                body: JSON.stringify(lastShotData)
+            })
+            .then(function(r){ return r.json().then(function(d){ return {ok:r.ok, d:d}; }); })
+            .then(function(res){
+                if(res.ok){
+                    aiAdviceText.textContent = res.d.advice;
+                    aiAdviceBox.classList.remove('hidden');
+                    aiAdviceBtn.innerHTML = '<i class="fas fa-rotate-right mr-1.5 text-vball-400"></i><span class="text-[13px]">Запросить новый совет</span>';
+                }else{
+                    showToast(res.d.detail || 'ИИ-сервис недоступен', true);
+                    aiAdviceBtn.innerHTML = '<i class="fas fa-wand-magic-sparkles mr-1.5 text-vball-400"></i><span class="text-[13px]">Получить совет от ИИ-тренера</span>';
+                }
+            })
+            .catch(function(){
+                showToast('Не удалось связаться с сервером', true);
+                aiAdviceBtn.innerHTML = '<i class="fas fa-wand-magic-sparkles mr-1.5 text-vball-400"></i><span class="text-[13px]">Получить совет от ИИ-тренера</span>';
+            })
+            .finally(function(){
+                aiAdviceBtn.disabled = false;
+            });
         });
 
         /* ===== AUTH MODAL ===== */
