@@ -4,6 +4,9 @@ from pydantic import BaseModel, EmailStr
 from passlib.context import CryptContext
 import sqlite3
 import json
+import os
+import urllib.request
+import urllib.error
 from datetime import datetime
 from typing import Optional
 
@@ -20,6 +23,12 @@ app.add_middleware(
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 DB_PATH = "database.db"
+
+# Groq API key is read from an environment variable -- NEVER hardcode it here,
+# since this file lives in a public GitHub repo. Set GROQ_API_KEY on Railway instead.
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
+GROQ_MODEL = "llama-3.3-70b-versatile"
 
 
 def get_db():
@@ -75,6 +84,18 @@ class HistoryEntry(BaseModel):
     reach_height: float
     hit_coords: str   # JSON string: {"x": 4.5, "y": 7.0}
     land_coords: str  # JSON string: {"x": 4.5, "y": 13.0}
+
+
+class AnalyzeRequest(BaseModel):
+    speed: int
+    reach_height: float
+    net_height: float
+    flight_time: float
+    horizontal_distance: float
+    hit_x: float
+    hit_y: float
+    land_x: float
+    land_y: float
 
 
 # --- Endpoints ---
@@ -172,6 +193,59 @@ def get_stats():
         }
     finally:
         conn.close()
+
+
+@app.post("/api/analyze")
+def analyze_shot(data: AnalyzeRequest):
+    if not GROQ_API_KEY:
+        raise HTTPException(status_code=503, detail="ИИ-анализ временно недоступен (ключ не настроен на сервере)")
+
+    # Where the ball landed relative to the court zones, in plain Russian, for the AI to reason about
+    land_zone = "в аут (за пределами площадки)" if not (0 <= data.land_x <= 9 and 9 <= data.land_y <= 18) else "в площадку соперника"
+
+    prompt = (
+        f"Ты — опытный тренер по волейболу. Проанализируй один удар (нападающий удар/спайк) игрока "
+        f"по следующим измеренным данным и дай короткий практический совет по технике на русском языке.\n\n"
+        f"Данные удара:\n"
+        f"- Скорость мяча: {data.speed} км/ч\n"
+        f"- Высота точки удара (съём): {data.reach_height:.2f} м\n"
+        f"- Высота сетки: {data.net_height:.2f} м\n"
+        f"- Время полёта мяча: {data.flight_time:.3f} с\n"
+        f"- Горизонтальная дистанция полёта: {data.horizontal_distance:.2f} м\n"
+        f"- Точка удара на площадке: X={data.hit_x:.1f} Y={data.hit_y:.1f}\n"
+        f"- Точка приземления: X={data.land_x:.1f} Y={data.land_y:.1f} ({land_zone})\n\n"
+        f"Дай ответ в 3-4 коротких предложениях: оцени силу удара относительно общего уровня игроков, "
+        f"прокомментируй траекторию и точку приземления, и дай один конкретный совет по технике для следующего удара. "
+        f"Пиши тепло и подбадривающе, но честно. Не используй markdown-разметку, только обычный текст."
+    )
+
+    payload = json.dumps({
+        "model": GROQ_MODEL,
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.7,
+        "max_tokens": 300
+    }).encode("utf-8")
+
+    req = urllib.request.Request(
+        GROQ_API_URL,
+        data=payload,
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {GROQ_API_KEY}"
+        },
+        method="POST"
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            result = json.loads(resp.read().decode("utf-8"))
+            advice = result["choices"][0]["message"]["content"].strip()
+            return {"success": True, "advice": advice}
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", errors="ignore")
+        raise HTTPException(status_code=502, detail=f"Ошибка ИИ-сервиса: {e.code}")
+    except Exception as e:
+        raise HTTPException(status_code=502, detail="Не удалось связаться с ИИ-сервисом")
 
 
 if __name__ == "__main__":
