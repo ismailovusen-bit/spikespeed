@@ -28,7 +28,7 @@ DB_PATH = "database.db"
 # since this file lives in a public GitHub repo. Set GROQ_API_KEY on Railway instead.
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
-GROQ_MODEL = "llama-3.3-70b-versatile"
+GROQ_MODEL = "openai/gpt-oss-120b"
 
 
 def get_db():
