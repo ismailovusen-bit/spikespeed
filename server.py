@@ -225,7 +225,8 @@ def analyze_shot(data: AnalyzeRequest):
         "model": GROQ_MODEL,
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0.7,
-        "max_tokens": 500
+        "max_tokens": 800,
+        "reasoning_effort": "low"
     }
 
     try:
@@ -238,7 +239,7 @@ def analyze_shot(data: AnalyzeRequest):
             },
             timeout=25.0
         )
-        print(f"[Groq] status={resp.status_code} body={resp.text[:500]}")
+        print(f"[Groq] status={resp.status_code} body={resp.text[:800]}")
 
         if resp.status_code != 200:
             raise HTTPException(
@@ -247,7 +248,29 @@ def analyze_shot(data: AnalyzeRequest):
             )
 
         result = resp.json()
-        advice = result["choices"][0]["message"]["content"].strip()
+        choice = result["choices"][0]
+        finish_reason = choice.get("finish_reason")
+        advice = (choice["message"].get("content") or "").strip()
+        print(f"[Groq] finish_reason={finish_reason} advice_len={len(advice)}")
+
+        if not advice:
+            # The model spent its whole token budget on internal reasoning and never wrote
+            # the visible answer. Retry once with a larger budget before giving up.
+            payload["max_tokens"] = 1200
+            resp2 = httpx.post(
+                GROQ_API_URL,
+                json=payload,
+                headers={"Content-Type": "application/json", "Authorization": f"Bearer {GROQ_API_KEY}"},
+                timeout=25.0
+            )
+            print(f"[Groq] retry status={resp2.status_code} body={resp2.text[:800]}")
+            if resp2.status_code == 200:
+                result = resp2.json()
+                advice = (result["choices"][0]["message"].get("content") or "").strip()
+
+        if not advice:
+            raise HTTPException(status_code=502, detail="ИИ не смог сформировать ответ, попробуй ещё раз")
+
         return {"success": True, "advice": advice}
 
     except httpx.RequestError as e:
