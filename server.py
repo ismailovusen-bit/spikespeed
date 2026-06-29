@@ -5,8 +5,7 @@ from passlib.context import CryptContext
 import sqlite3
 import json
 import os
-import urllib.request
-import urllib.error
+import httpx
 from datetime import datetime
 from typing import Optional
 
@@ -197,6 +196,7 @@ def get_stats():
 
 @app.post("/api/analyze")
 def analyze_shot(data: AnalyzeRequest):
+    print(f"[Groq] key loaded: {'yes, starts with ' + GROQ_API_KEY[:7] if GROQ_API_KEY else 'NO KEY FOUND'}")
     if not GROQ_API_KEY:
         raise HTTPException(status_code=503, detail="ИИ-анализ временно недоступен (ключ не настроен на сервере)")
 
@@ -219,33 +219,38 @@ def analyze_shot(data: AnalyzeRequest):
         f"Пиши тепло и подбадривающе, но честно. Не используй markdown-разметку, только обычный текст."
     )
 
-    payload = json.dumps({
+    payload = {
         "model": GROQ_MODEL,
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0.7,
         "max_tokens": 300
-    }).encode("utf-8")
-
-    req = urllib.request.Request(
-        GROQ_API_URL,
-        data=payload,
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {GROQ_API_KEY}"
-        },
-        method="POST"
-    )
+    }
 
     try:
-        with urllib.request.urlopen(req, timeout=20) as resp:
-            result = json.loads(resp.read().decode("utf-8"))
-            advice = result["choices"][0]["message"]["content"].strip()
-            return {"success": True, "advice": advice}
-    except urllib.error.HTTPError as e:
-        body = e.read().decode("utf-8", errors="ignore")
-        raise HTTPException(status_code=502, detail=f"Ошибка ИИ-сервиса: {e.code}")
-    except Exception as e:
-        raise HTTPException(status_code=502, detail="Не удалось связаться с ИИ-сервисом")
+        resp = httpx.post(
+            GROQ_API_URL,
+            json=payload,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {GROQ_API_KEY}"
+            },
+            timeout=25.0
+        )
+        print(f"[Groq] status={resp.status_code} body={resp.text[:500]}")
+
+        if resp.status_code != 200:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Groq вернул ошибку {resp.status_code}: {resp.text[:200]}"
+            )
+
+        result = resp.json()
+        advice = result["choices"][0]["message"]["content"].strip()
+        return {"success": True, "advice": advice}
+
+    except httpx.RequestError as e:
+        print(f"[Groq] connection error: {repr(e)}")
+        raise HTTPException(status_code=502, detail=f"Не удалось связаться с Groq: {e}")
 
 
 if __name__ == "__main__":
